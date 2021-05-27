@@ -115,6 +115,8 @@ func (conR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 }
 
 func (conR *Reactor) AddPeer(peer p2p.Peer) {
+	conR.Logger.Info("addpeer res", peer.Send(TestChannel, []byte("consensus")))
+
 	conR.peers.Set(p2p.IDAddressString(peer.ID(), ""), peer)
 }
 

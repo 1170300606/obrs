@@ -2,42 +2,80 @@ package node
 
 import (
 	"chainbft_demo/consensus"
+	"chainbft_demo/mempool"
+	"chainbft_demo/rpc"
+	"errors"
 	"fmt"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	"github.com/tendermint/tendermint/version"
+	"net"
+	"net/http"
 	"strings"
 )
-
-type Provider func(*cfg.Config, log.Logger) (*Node, error)
-
-type Node struct {
-	service.BaseService
-
-	// config
-	config *cfg.Config
-
-	// network
-	transport *p2p.MultiplexTransport
-	sw        *p2p.Switch // p2p connections
-	//addrBook    pex.AddrBook // known peers
-	nodeInfo p2p.NodeInfo
-	nodeKey  *p2p.NodeKey // our node privkey
-	//isListening bool
-
-	// service
-	testReactor *consensus.Reactor
-}
-
-type Option func(*Node)
 
 func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 	nodeKey, _ := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 
 	return NewNode(config, nodeKey, logger)
+}
+
+func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, options ...Option) (*Node, error) {
+	// create services
+
+	// create Consensus reactor
+	conlogger := logger.With("module", "Consensus")
+	conR := consensus.NewReactor()
+	conR.SetLogger(conlogger)
+	conR.SetId(nodekey.ID()) // TODO remove
+
+	// create Mempool reactor
+	memlogger := logger.With("module", "Mempool")
+	mem := mempool.NewListMempool(config.Mempool, 0)
+	memR := mempool.NewReactor(mem)
+	memR.SetLogger(memlogger)
+
+	// create p2p network
+	p2pLogger := logger.With("module", "P2P")
+	//setup node identity
+	//nodeinfo, err := NewNodeInfo(nodekey.ID(), config.P2P.ListenAddress)
+	nodeinfo, err := makeNodeInfo(config, nodekey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Setup Transport.
+	transport := createTransport(nodeinfo, nodekey)
+
+	// Setup Switch.
+	sw := createSwitch(
+		config, transport,
+		conR, memR,
+		nodeinfo, nodekey, p2pLogger,
+	)
+
+	node := &Node{
+		BaseService:      service.BaseService{},
+		config:           config,
+		transport:        transport,
+		sw:               sw,
+		nodeInfo:         nodeinfo,
+		nodeKey:          nodekey,
+		consensusReactor: conR,
+		mempool:          mem,
+		mempoolReactor:   memR,
+	}
+
+	node.BaseService = *service.NewBaseService(logger, "Node", node)
+	for _, option := range options {
+		option(node)
+	}
+
+	return node, nil
 }
 
 func createTransport(
@@ -58,7 +96,8 @@ func createTransport(
 
 func createSwitch(config *cfg.Config,
 	transport p2p.Transport,
-	consensusReactor *consensus.Reactor,
+	conR *consensus.Reactor,
+	memR *mempool.Reactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger) *p2p.Switch {
@@ -68,7 +107,9 @@ func createSwitch(config *cfg.Config,
 		transport,
 	)
 	sw.SetLogger(p2pLogger)
-	sw.AddReactor("CONSENSUS", consensusReactor)
+
+	sw.AddReactor("CONSENSUS", conR)
+	sw.AddReactor("MEMPOOL", memR)
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
@@ -94,7 +135,8 @@ func makeNodeInfo(
 		Version:       version.TMCoreSemVer,
 		Channels: []byte{
 			consensus.TestChannel,
-		},
+			mempool.MempoolChannel,
+		}, // 必须在这里声明Channel才可以使用，为什么
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{
 			TxIndex:    txIndexerStatus,
@@ -114,46 +156,32 @@ func makeNodeInfo(
 	return nodeInfo, err
 }
 
-func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, options ...Option) (*Node, error) {
-	// create test reactor
-	testReactor := consensus.NewReactor()
-	testReactor.SetLogger(logger)
-	testReactor.SetId(nodekey.ID())
+// ----------------------------------
+type Provider func(*cfg.Config, log.Logger) (*Node, error)
 
-	p2pLogger := logger.With("module", "p2p")
+type Node struct {
+	service.BaseService
 
-	// setup node identity
-	//nodeinfo, err := NewNodeInfo(nodekey.ID(), config.P2P.ListenAddress)
-	nodeinfo, err := makeNodeInfo(config, nodekey)
-	if err != nil {
-		return nil, err
-	}
+	// config
+	config *cfg.Config
 
-	// Setup Transport.
-	transport := createTransport(nodeinfo, nodekey)
+	// network
+	transport *p2p.MultiplexTransport
+	sw        *p2p.Switch // p2p connections
+	//addrBook    pex.AddrBook // known peers
+	nodeInfo    p2p.NodeInfo
+	nodeKey     *p2p.NodeKey // our node privkey
+	isListening bool
 
-	// Setup Switch.
-	sw := createSwitch(
-		config, transport, testReactor, nodeinfo, nodekey, p2pLogger,
-	)
+	// service
+	consensusReactor *consensus.Reactor
+	mempool          mempool.Mempool
+	mempoolReactor   *mempool.Reactor
 
-	node := &Node{
-		BaseService: service.BaseService{},
-		config:      config,
-		transport:   transport,
-		sw:          sw,
-		nodeInfo:    nodeinfo,
-		nodeKey:     nodekey,
-		testReactor: testReactor,
-	}
-
-	node.BaseService = *service.NewBaseService(logger, "Node", node)
-	for _, option := range options {
-		option(node)
-	}
-
-	return node, nil
+	rpcListeners []net.Listener
 }
+
+type Option func(*Node)
 
 func (n *Node) Switch() *p2p.Switch {
 	return n.sw
@@ -164,6 +192,16 @@ func (n *Node) NodeInfo() p2p.NodeInfo {
 }
 
 func (n *Node) OnStart() error {
+	// start RPC server if listenAddr is not empty
+	if n.config.RPC.ListenAddress != "" {
+		RPClogger := n.Logger.With("module", "RPC")
+		listeners, err := n.startRPC(n.mempool, RPClogger)
+		if err != nil {
+			return errors.New("start RPC server failed. reason: " + err.Error())
+		}
+		n.rpcListeners = listeners
+	}
+
 	// start the transport
 	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
@@ -179,7 +217,8 @@ func (n *Node) OnStart() error {
 		return err
 	}
 
-	// TODO 去连接其他节点
+	n.isListening = true
+	// 去连接其他节点
 	n.Logger.Info("onstart", "peers", n.config.P2P.PersistentPeers)
 	err = n.sw.DialPeersAsync(splitAndTrimEmpty(n.config.P2P.PersistentPeers, ",", " "))
 	if err != nil {
@@ -189,12 +228,65 @@ func (n *Node) OnStart() error {
 	return nil
 }
 
+func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener, error) {
+	// setup rpc enviroment
+	rpc.SetEnvironment(&rpc.Environment{Mempool: mem})
+
+	config := server.DefaultConfig()
+
+	listenAddrs := splitAndTrimEmpty(n.config.RPC.ListenAddress, ",", " ")
+
+	listeners := make([]net.Listener, len(listenAddrs))
+
+	for i, listenAddr := range listenAddrs {
+		mux := http.NewServeMux()
+		rpcLogger := n.Logger.With("module", "rpc-server")
+		wmLogger := rpcLogger.With("protocol", "websocket")
+		wm := server.NewWebsocketManager(
+			rpc.Routes,
+		)
+		wm.SetLogger(wmLogger)
+		mux.HandleFunc("/websocket", wm.WebsocketHandler)
+		server.RegisterRPCFuncs(mux, rpc.Routes, rpcLogger)
+		listener, err := server.Listen(
+			listenAddr,
+			config,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		var rootHandler http.Handler = mux
+
+		go func() {
+			if err := server.Serve(
+				listener,
+				rootHandler,
+				rpcLogger,
+				config,
+			); err != nil {
+				n.Logger.Error("Error serving server", "err", err)
+			}
+		}()
+
+		listeners[i] = listener
+	}
+
+	return listeners, nil
+}
+
 func (n *Node) OnStop() {
-	n.testReactor.OnStop()
+	n.consensusReactor.OnStop()
 
 	n.sw.Stop()
 
 	n.transport.Close()
+
+	for _, l := range n.rpcListeners {
+		if err := l.Close(); err != nil {
+			n.Logger.Error("Error closing listener", "listener", l, "err", err)
+		}
+	}
 
 }
 
