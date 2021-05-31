@@ -2,6 +2,7 @@ package mempool
 
 import (
 	"chainbft_demo/types"
+	"encoding/json"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
@@ -29,7 +30,7 @@ type Reactor struct {
 
 	mtx sync.Mutex
 
-	config config.MempoolConfig
+	config *config.MempoolConfig
 
 	mempool *ListMempool
 	ids     *mempoolIDs
@@ -99,8 +100,9 @@ func newMempoolIDs() *mempoolIDs {
 	}
 }
 
-func NewReactor(mempool *ListMempool, options ...ReactorOption) *Reactor {
+func NewReactor(config *config.MempoolConfig, mempool *ListMempool, options ...ReactorOption) *Reactor {
 	reactor := &Reactor{
+		config:  config,
 		mempool: mempool,
 		ids:     newMempoolIDs(),
 	}
@@ -132,11 +134,14 @@ func (memR *Reactor) OnStart() error {
 // GetChannels implements Reactor by returning the list of channels for this
 // reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
+	largestTx := make([]byte, memR.config.MaxTxBytes)
+	batchMsg, _ := json.Marshal(largestTx)
+
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  MempoolChannel,
 			Priority:            5,
-			RecvMessageCapacity: 1024 * 1024, // TODO 根据编码需求设定
+			RecvMessageCapacity: len(batchMsg), // TODO 根据编码需求设定
 		},
 	}
 }
@@ -156,24 +161,23 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // Receive implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
-	//msg, err := memR.decodeMsg(msgBytes)
-	//if err != nil {
-	//	memR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
-	//	memR.Switch.StopPeerForError(src, err)
-	//	return
-	//}
-	memR.Logger.Info("Receive Tx", "src", src, "chId", chID, "msg", msgBytes)
+	msg, err := memR.decodeMsg(msgBytes)
+	if err != nil {
+		memR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
+		memR.Switch.StopPeerForError(src, err)
+		return
+	}
+	memR.Logger.Info("Receive Tx", "src", src, "chId", chID, "msg", msg.Tx)
 
 	txInfo := TxInfo{SenderID: memR.ids.GetForPeer(src)}
 	if src != nil {
 		txInfo.SenderP2PID = src.ID()
 	}
-	//for _, tx := range msg.Txs {
-	err := memR.mempool.CheckTx(msgBytes, txInfo)
+
+	err = memR.mempool.CheckTx(msg.Tx, txInfo)
 	if err != nil {
 		memR.Logger.Info("Could not check tx", "tx", txID(msgBytes), "err", err)
 	}
-	//}
 }
 
 // --------------------------------
@@ -187,7 +191,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	for {
 		if !memR.IsRunning() || !peer.IsRunning() {
-			memR.Logger.Error(fmt.Sprintf("peer {} didn't start", peerID))
+			memR.Logger.Error(fmt.Sprintf("peer %v didn't start", peerID))
 			return
 		}
 
@@ -210,7 +214,12 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if _, ok := memTx.senders.Load(peerID); !ok {
 			// 没有从该节点收到这条tx，准备向该节点发送tx
 			memR.Logger.Info("prepare to send tx to other peer", "tx", memTx.tx, "destination", peer)
-			if success := peer.Send(MempoolChannel, memTx.tx); !success {
+
+			bz, err := json.Marshal(memTx.tx)
+			if err != nil {
+				continue
+			}
+			if success := peer.Send(MempoolChannel, bz); !success {
 				// 如果发送不成功，间隔peerCatchupSleepIntervalMS后再看是否需要发送
 				memR.Logger.Error("send tx failed")
 				time.Sleep(peerCatchupSleepIntervalMS * time.Millisecond)
@@ -233,12 +242,14 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 // 将byte数组解码会tx的数组格式
 // bytes data => []types.Tx
-func (memR *Reactor) decodeMsg([]byte) (TxsMessage, error) {
+func (memR *Reactor) decodeMsg(data []byte) (TxsMessage, error) {
 	// TODO 确定编码协议 proto？
-	return TxsMessage{}, nil
+	tx := types.Tx{}
+	json.Unmarshal(data, &tx)
+	return TxsMessage{tx}, nil
 }
 
 // ---------------------------------
 type TxsMessage struct {
-	Txs []types.Tx
+	Tx types.Tx
 }

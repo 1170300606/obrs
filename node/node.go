@@ -36,7 +36,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
 	mem := mempool.NewListMempool(config.Mempool, 0)
-	memR := mempool.NewReactor(mem)
+	memR := mempool.NewReactor(config.Mempool, mem)
 	memR.SetLogger(memlogger)
 
 	// create p2p network
