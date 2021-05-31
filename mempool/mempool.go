@@ -12,15 +12,19 @@ type Mempool interface {
 	// ReapTxs从mempool中打包交易，打包交易的大小小于maxBytes
 	ReapTxs(maxBytes int64) types.Txs
 
+	// ReapMaxTxs从mempool中取出caller指定数量的交易
+	// 如果max是负数则表示取出mempool所有的交易
+	ReapMaxTxs(max int) types.Txs
+
 	// Lock locks the mempool，更新mempool前必须lock mempool
 	Lock()
 
 	// UnLock the Mempool
-	UnLock()
+	Unlock()
 
 	// Update committed交易从mempool中删去
 	// NOTE: 该函数只能在block被提交后才能调用
-	// NOTE: caller负责Lock/UnLock
+	// NOTE: caller负责Lock/Unlock
 	Update(int64, types.Txs) error
 
 	// Flush将mempool中的所有交易和和cache清空

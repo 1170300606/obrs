@@ -45,7 +45,7 @@ type ListMempool struct {
 	preCheck  PreCheckFunc
 
 	txs    *clist.CList
-	txsMap sync.Map
+	txsMap sync.Map // Txkey(tx) => clist.CElement
 
 	// Keep a cache of already-seen txs.
 	// This reduces the pressure on the proxyApp.
@@ -67,11 +67,27 @@ func (mem *ListMempool) SetLogger(logger log.Logger) {
 }
 
 func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
-	//TODO check tx
+	txSize := len(tx)
+	if err := mem.isFull(txSize); err != nil {
+		return err
+	}
 
-	// 先判断tx是否已经
-	if _, ok := mem.txsMap.Load(TxKey(tx)); ok {
-		return ErrTxInMap
+	if txSize > mem.config.MaxTxBytes {
+		return ErrTxTooLarge{
+			max:    mem.config.MaxTxBytes,
+			actual: txSize,
+		}
+	}
+
+	// 先判断tx是否已经存在
+	if !mem.cache.Push(tx) {
+		if e, ok := mem.txsMap.Load(TxKey(tx)); ok {
+			// 已经收到过tx交易，将tx对应的sender标志位置为true
+			memTx := e.(*clist.CElement).Value.(*mempoolTx)
+			memTx.senders.LoadOrStore(txinfo.SenderID, true)
+		}
+
+		return ErrTxInCache
 	}
 
 	memTx := &mempoolTx{
@@ -80,14 +96,54 @@ func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
 	}
 	memTx.senders.Store(txinfo.SenderID, struct{}{})
 
-	mem.logger.Info("added tx", "tx", tx, "txinfo", txinfo)
+	//mem.logger.Debug("added tx", "tx", tx, "txinfo", txinfo)
 	mem.addTx(memTx)
 
 	return nil
 }
 
+// 协程安全
 func (mem *ListMempool) ReapTxs(maxBytes int64) types.Txs {
-	return nil
+	mem.updateMtx.RLock()
+	defer mem.updateMtx.RUnlock()
+
+	txs := make([]types.Tx, 0, mem.txs.Len())
+
+	for e := mem.txs.Front(); e != nil; e = e.Next() {
+		memTx := e.Value.(*mempoolTx)
+
+		// TODO 如何计算txs的bytes，计算编码后的bytes大小还是前的
+		dataSize := types.CaputeSizeForTxs(append(txs, memTx.tx))
+
+		if maxBytes > -1 && dataSize > maxBytes {
+			return txs
+		}
+		txs = append(txs, memTx.tx)
+	}
+
+	return txs
+}
+
+// Safe for concurrent use by multiple goroutines.
+func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
+	mem.updateMtx.RLock()
+	defer mem.updateMtx.RUnlock()
+
+	if max < 0 {
+		max = mem.txs.Len()
+	}
+
+	txs := make([]types.Tx, 0, func(a, b int) int {
+		if a < b {
+			return a
+		}
+		return b
+	}(max, mem.Size()))
+	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
+		memTx := e.Value.(*mempoolTx)
+		txs = append(txs, memTx.tx)
+	}
+	return txs
 }
 
 // Lock 锁定mempool的updateMtx读写锁的写锁
@@ -96,15 +152,44 @@ func (mem *ListMempool) Lock() {
 }
 
 // UnLock 释放mempool的updateMtx读写锁的写锁
-func (mem *ListMempool) UnLock() {
+func (mem *ListMempool) Unlock() {
 	mem.updateMtx.Unlock()
 }
 
-func (mem *ListMempool) Update(i int64, txs types.Txs) error {
+// Caller负责加锁
+func (mem *ListMempool) Update(height int64, txs types.Txs) error {
+
+	for _, tx := range txs {
+
+		// 将提交的交易添加到cache中
+		mem.cache.Push(tx)
+
+		if e, ok := mem.txsMap.Load(TxKey(tx)); ok {
+			mem.removeTx(tx, e.(*clist.CElement), false)
+		}
+	}
+
+	mem.height = height
 	return nil
 }
 
 func (mem *ListMempool) Flush() {
+	mem.updateMtx.RLock()
+	defer mem.updateMtx.RUnlock()
+
+	_ = atomic.SwapInt64(&mem.txsBytes, 0)
+	mem.cache.Reset()
+
+	// 不调用mem.removeTx， 效率太差
+	for e := mem.txs.Front(); e != nil; e = e.Next() {
+		mem.txs.Remove(e)
+		e.DetachPrev()
+	}
+
+	mem.txsMap.Range(func(key, _ interface{}) bool {
+		mem.txsMap.Delete(key)
+		return true
+	})
 }
 
 func (mem *ListMempool) Size() int {
@@ -115,6 +200,14 @@ func (mem *ListMempool) TxsBytes() int64 {
 	return atomic.LoadInt64(&mem.txsBytes)
 }
 
+func (mem *ListMempool) TxsWaitChan() <-chan struct{} {
+	return mem.txs.WaitChan()
+}
+
+func (mem *ListMempool) TxsFront() *clist.CElement {
+	return mem.txs.Front()
+}
+
 // addTx 将tx加入到mempool的双向链表；
 // 并且更新快速查询表txMap和mempool的tx总大小
 func (mem *ListMempool) addTx(memTx *mempoolTx) {
@@ -123,12 +216,28 @@ func (mem *ListMempool) addTx(memTx *mempoolTx) {
 	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx)))
 }
 
-func (mem *ListMempool) TxsWaitChan() <-chan struct{} {
-	return mem.txs.WaitChan()
+func (mem *ListMempool) removeTx(tx types.Tx, e *clist.CElement, removeFromCache bool) {
+	mem.txs.Remove(e)
+	e.DetachPrev()
+	mem.txsMap.Delete(TxKey(tx))
+	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	if removeFromCache {
+		mem.cache.Remove(tx)
+	}
 }
 
-func (mem *ListMempool) TxsFront() *clist.CElement {
-	return mem.txs.Front()
+func (mem *ListMempool) isFull(txSize int) error {
+	memSize := mem.Size()
+	txsBytes := mem.TxsBytes()
+	if memSize >= mem.config.Size || txsBytes+int64(txSize) > mem.config.MaxTxsBytes {
+		return ErrMempoolIsFull{
+			numTxs:      memSize,
+			maxTxs:      mem.config.Size,
+			txsBytes:    txsBytes,
+			maxTxsBytes: mem.config.MaxTxsBytes,
+		}
+	}
+	return nil
 }
 
 // ------------------------------
