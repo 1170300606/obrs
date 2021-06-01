@@ -26,6 +26,12 @@ func init() {
 	rand.Seed(time.Now().Unix())
 }
 
+// ------ Message ------
+type Message interface {
+	ValidateBasic() error
+}
+
+// ------- Reactor ------
 type Reactor struct {
 	p2p.BaseReactor
 
@@ -39,6 +45,8 @@ type Reactor struct {
 	id   p2p.ID
 
 	forward *cmap.CMap
+
+	consensus *ConsensusState
 }
 
 func (conR *Reactor) SetId(id p2p.ID) {
@@ -65,7 +73,6 @@ func NewReactor(options ...ReactorOption) *Reactor {
 
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Consensus Reactor started.")
-
 	go func() {
 		//  fake consensus
 		d := 10 * time.Second
