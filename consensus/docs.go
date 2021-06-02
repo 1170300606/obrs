@@ -27,3 +27,5 @@ package consensus
 //  	- Store - 数据持久化
 //		- Mempool - 交易缓存池
 //	- PeerState - 保存邻居节点的状态，根据收到的消息来确定，consensus reactor负责创建PeerState，并且保存到Switch中
+
+// Slot移动到Consensus包内，因为Slo需要生成Consensus需要的数据，但这些数据类型很多都是consensus内部的数据结构；其次slot并不需要单独一个reactor来通信，或者目前不需要

@@ -1,7 +1,8 @@
-package slot
+package consensus
 
 import (
 	"chainbft_demo/types"
+	"github.com/tendermint/tendermint/libs/log"
 	"time"
 )
 
@@ -12,8 +13,10 @@ type Slot interface {
 	GetSlot() types.LTime
 
 	// 获取超时channel
-	GetTimeOutChan() <-chan struct{}
+	Chan() <-chan timeoutInfo
 
 	// 重置超时定时器
 	Reset(duration time.Duration)
+
+	SetLogger(logger log.Logger)
 }
