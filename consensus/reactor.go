@@ -74,27 +74,13 @@ func NewReactor(options ...ReactorOption) *Reactor {
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Consensus Reactor started.")
 	go func() {
-		//  fake consensus
-		d := 10 * time.Second
-		timer := time.NewTimer(d)
 	LOOP:
 		for {
 			select {
 			case <-conR.quit:
-				timer.Stop()
 				break LOOP
-			case <-timer.C:
 				conR.Logger.Info(fmt.Sprintf("%s=%v", conR.id, conR.seed))
 
-				msgBytes := []byte(fmt.Sprintf("%s=%s", conR.id, conR.seed))
-
-				go func(seed int64) {
-					resp := <-conR.Switch.Broadcast(TestChannel, msgBytes)
-					conR.Logger.Info(fmt.Sprintf("%v的广播结果: %v", seed, resp))
-				}(conR.seed)
-				conR.seed += 1
-
-				timer.Reset(d)
 			}
 		}
 	}()
