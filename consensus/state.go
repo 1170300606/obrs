@@ -16,8 +16,9 @@ import (
 
 // 临时配置区
 const (
-	slotTimeOut      = 5 * time.Second
-	immediateTimeOut = 0 * time.Second
+	slotTimeOut        = 5 * time.Second   // 两个slot之间的间隔
+	immediateTimeOut   = 0 * time.Second   //
+	initialSlotTimeout = 100 * time.Second // 节点启动后clock默认超时时间
 )
 
 // 共识状态机实现
@@ -119,24 +120,7 @@ func SetReactor(reactor *Reactor) ConsensusOption {
 
 func (cs *ConsensusState) OnStart() error {
 	go cs.recieveRoutine()
-	// event
-	go func() {
-		for {
-			select {
-			case msginfo := <-cs.internalMsgQueue:
-				//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
-				if err := msginfo.msg.ValidateBasic(); err != nil {
-					cs.Logger.Error("internal event validated failed", "err", err)
-					continue
-				}
-				event := msginfo.msg.(cstype.RoundEvent)
-				cs.handleEvent(event)
-			}
-		}
-	}()
-	if err := cs.slotClock.OnStart(); err != nil {
-		return err
-	}
+	go cs.recieveEventRoutine()
 	return nil
 }
 
@@ -157,6 +141,23 @@ func (cs *ConsensusState) recieveRoutine() {
 			cs.Logger.Debug("recieved timeout event", "timeout", ti)
 			// 统一处理超时事件，目前只有切换slot的超时事件发生
 			cs.handleTimeOut(ti)
+		}
+	}
+}
+
+//recieveEventRoutine 负责处理内部的状态事件，完成状态跃迁
+func (cs *ConsensusState) recieveEventRoutine() {
+	// event
+	for {
+		select {
+		case msginfo := <-cs.internalMsgQueue:
+			//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
+			if err := msginfo.msg.ValidateBasic(); err != nil {
+				cs.Logger.Error("internal event validated failed", "err", err)
+				continue
+			}
+			event := msginfo.msg.(cstype.RoundEvent)
+			cs.handleEvent(event)
 		}
 	}
 }

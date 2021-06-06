@@ -9,16 +9,23 @@ import (
 )
 
 // Slot提供逻辑时钟，内部完成节点之间的时钟同步
+// consensusState不负责SlotClock的启动
 type SlotClock interface {
 	service.Service
 	// 获取当前的slot
 	GetSlot() types.LTime
 
+	// 返回上一次设置的超时时间
+	GetLastDuration() time.Duration
+
+	// 返回上一次超时事件触发的时间点
+	GetLastUptTime() time.Time
+
 	// 获取超时channel
 	Chan() <-chan timeoutInfo
 
 	// 重置超时定时器
-	ResetClock(duration time.Duration)
+	ResetClock(after time.Duration)
 
 	SetLogger(logger log.Logger)
 }
@@ -65,6 +72,7 @@ func (sc *slotClock) OnStart() error {
 			case now := <-sc.t.C:
 				go func() { sc.timerChan <- now }()
 			case now := <-sc.timerChan:
+				// 超时事件发生，先更新内部的logic time，在往上返回新的时间
 				sc.Logger.Debug("Time out", "curslot", sc.curslot, "nextslot", sc.curslot.Update(1), "duration", sc.lastDuration)
 				sc.lastUptTime = now
 				sc.curslot = sc.curslot.Update(1)
@@ -74,7 +82,6 @@ func (sc *slotClock) OnStart() error {
 					Step:     cstypes.RoundStepSlot,
 				}
 				go func() { sc.tockChan <- ti }()
-
 			}
 		}
 	}()
@@ -89,20 +96,28 @@ func (s *slotClock) GetSlot() types.LTime {
 	return s.curslot
 }
 
+func (sc *slotClock) GetLastUptTime() time.Time {
+	return sc.lastUptTime
+}
+
+func (sc *slotClock) GetLastDuration() time.Duration {
+	return sc.lastDuration
+}
+
 func (s *slotClock) Chan() <-chan timeoutInfo {
 	return s.tockChan
 }
 
-func (s *slotClock) ResetClock(d time.Duration) {
-	s.Logger.Debug("reset clock", "duration", d)
-	s.lastDuration = d
+func (s *slotClock) ResetClock(after time.Duration) {
+	s.Logger.Debug("reset clock", "duration", after)
+	s.lastDuration = after
 	if !s.t.Stop() {
 		select {
 		case <-s.t.C:
 		default:
 		}
 	}
-	s.t.Reset(d)
+	s.t.Reset(after)
 }
 
 func (s *slotClock) SetLogger(logger log.Logger) {
