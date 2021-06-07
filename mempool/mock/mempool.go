@@ -20,7 +20,7 @@ func (Mempool) CheckTx(_ types.Tx, _ mempl.TxInfo) error {
 func (Mempool) ReapTxs(_ int64) types.Txs  { return types.Txs{} }
 func (Mempool) ReapMaxTxs(_ int) types.Txs { return types.Txs{} }
 func (Mempool) Update(
-	_ int64,
+	_ types.LTime,
 	_ types.Txs,
 ) error {
 	return nil

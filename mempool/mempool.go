@@ -25,7 +25,7 @@ type Mempool interface {
 	// Update committed交易从mempool中删去
 	// NOTE: 该函数只能在block被提交后才能调用
 	// NOTE: caller负责Lock/Unlock
-	Update(int64, types.Txs) error
+	Update(types.LTime, types.Txs) error
 
 	// Flush将mempool中的所有交易和和cache清空
 	Flush()

@@ -14,9 +14,9 @@ const (
 	TxKeySize = 32
 )
 
-func NewListMempool(config *cfg.MempoolConfig, height int64, options ...ListMempoolOption) *ListMempool {
+func NewListMempool(config *cfg.MempoolConfig, slot types.LTime, options ...ListMempoolOption) *ListMempool {
 	mem := &ListMempool{
-		height: height,
+		slot:   slot,
 		config: config,
 		txs:    clist.New(),
 	}
@@ -34,8 +34,8 @@ func NewListMempool(config *cfg.MempoolConfig, height int64, options ...ListMemp
 
 type ListMempool struct {
 	// Atomic integers
-	height   int64 // the last block Update()'d to
-	txsBytes int64 // total size of mempool, in bytes
+	slot     types.LTime // the last block Update()'d to
+	txsBytes int64       // total size of mempool, in bytes
 
 	txsAvailable chan struct{} // fires once for each height, when the mempool is not empty
 
@@ -91,8 +91,8 @@ func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
 	}
 
 	memTx := &mempoolTx{
-		height: mem.height,
-		tx:     tx,
+		slot: mem.slot,
+		tx:   tx,
 	}
 	memTx.senders.Store(txinfo.SenderID, struct{}{})
 
@@ -157,10 +157,9 @@ func (mem *ListMempool) Unlock() {
 }
 
 // Caller负责加锁
-func (mem *ListMempool) Update(height int64, txs types.Txs) error {
+func (mem *ListMempool) Update(slot types.LTime, txs types.Txs) error {
 
 	for _, tx := range txs {
-
 		// 将提交的交易添加到cache中
 		mem.cache.Push(tx)
 
@@ -169,7 +168,7 @@ func (mem *ListMempool) Update(height int64, txs types.Txs) error {
 		}
 	}
 
-	mem.height = height
+	mem.slot = slot
 	return nil
 }
 
@@ -262,15 +261,17 @@ func (cache nopTxCache) Remove(tx types.Tx) {
 }
 
 type mempoolTx struct {
-	height int64
+	slot types.LTime
 
 	tx      types.Tx
 	senders sync.Map
 }
 
 // Height returns the height for this transaction
-func (memTx *mempoolTx) Height() int64 {
-	return atomic.LoadInt64(&memTx.height)
+func (memTx *mempoolTx) Height() types.LTime {
+	// 是否会有bug 并发读写
+	return memTx.slot
+	//return atomic.LoadInt64(&memTx.slot)
 }
 
 // ------------------------------
