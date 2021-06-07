@@ -206,14 +206,14 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 
 	// TODO 完成切换到slot 首先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
-	cs.Slot = cs.slotClock.GetSlot()
+	cs.CurSlot = cs.slotClock.GetSlot()
 
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
 
 	// 关于状态机的切换，是直接在这里调用下一轮的函数；
 	// 还是在统一的处理函数如handleStateMsg，然后根据不同的消息类型调用不同的阶段函数
-	cs.sendInternalMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventApply, cs.Slot}, ""})
+	cs.sendInternalMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventApply, cs.CurSlot}, ""})
 }
 
 // enterApply 进入Apply阶段
@@ -221,7 +221,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 // RoundEventApply事件触发
 // 负责触发RoundEventPropose事件
 func (cs *ConsensusState) enterApply() {
-	cs.Logger.Debug("enter apply step", "slot", cs.Slot)
+	cs.Logger.Debug("enter apply step", "slot", cs.CurSlot)
 	defer func() {
 		// 成功执行完apply，更新状态到RoundStepApply
 		cs.updateStep(cstype.RoundStepApply)
@@ -242,7 +242,7 @@ func (cs *ConsensusState) enterApply() {
 // RoundEventPropose事件触发
 // 不用触发任何事件，等待超时事件即可
 func (cs *ConsensusState) enterPropose() {
-	cs.Logger.Debug("enter propose step", "slot", cs.Slot)
+	cs.Logger.Debug("enter propose step", "slot", cs.CurSlot)
 
 	defer func() {
 		// 比较特殊，提案结束后进入RoundStepWait 等待接收消息
@@ -268,17 +268,25 @@ func (cs *ConsensusState) isProposer() bool {
 }
 
 func (cs *ConsensusState) defaultProposal() {
-	cs.Logger.Debug("proposer prepare to use block executor to get proposal", "slot", cs.Slot)
+	cs.Logger.Debug("proposer prepare to use block executor to get proposal", "slot", cs.CurSlot)
 	// 特殊，提案前先更新状态
 	cs.updateStep(cstype.RoundStepPropose)
-	proposal := cs.blockExec.CreateProposal(nil)
+
+	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
+	_ = cs.state.NewBranch()
+
+	// step 2 从mempool中打包没有冲突的交易
+	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
+
+	// step 3 填补proposal中的字段 完成打包阶段
+	proposal.Fill()
 
 	//  向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
 }
 
 func (cs *ConsensusState) updateSlot(slot types.LTime) {
-	cs.Slot = slot
+	cs.CurSlot = slot
 }
 
 func (cs *ConsensusState) updateStep(step cstype.RoundStepType) {

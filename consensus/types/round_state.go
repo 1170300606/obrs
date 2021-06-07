@@ -85,7 +85,7 @@ func (event RoundEvent) ValidateBasic() error {
 type RoundState struct {
 
 	// 基础的共识信息
-	Slot       types.LTime
+	CurSlot    types.LTime
 	Step       RoundStepType
 	Validator  *tmtype.PrivValidator // 验证者的信息 - 私钥，用来签名
 	Validators *tmtype.ValidatorSet  // 目前共识中的所有的验证者集合

@@ -22,7 +22,7 @@ func newConsensusState() (*ConsensusState, cleanup) {
 }
 
 func newConsensusStateWithConfig(config *config.Config) (*ConsensusState, cleanup) {
-	state := bkstate.NewState()
+	state := bkstate.NewState("testchan", types.LtimeZero)
 	cs := NewConsensusState(config.Consensus, nil, nil, state)
 
 	cs.SetLogger(log.NewFilter(log.TestingLogger(), log.AllowDebug()))
@@ -35,6 +35,7 @@ func TestNewDefaultConsensusState(t *testing.T) {
 	cs, clean := newConsensusState()
 	defer clean()
 	cs.OnStart()
+	cs.slotClock.OnStart()
 	cs.enterNewSlot(types.LtimeZero) //手动触发
 	time.Sleep(20 * time.Second)
 	cs.OnStop()
@@ -44,6 +45,7 @@ func TestEnterAlppyInWrongWay(t *testing.T) {
 	cs, clean := newConsensusState()
 	defer clean()
 	cs.OnStart()
+	cs.slotClock.OnStart()
 
 	assert.Panics(t, func() {
 		cs.enterApply()
@@ -56,6 +58,7 @@ func TestEnterProposeInWrongWay(t *testing.T) {
 	cs, clean := newConsensusState()
 	defer clean()
 	cs.OnStart()
+	cs.slotClock.OnStart()
 
 	assert.Panics(t, func() {
 		cs.enterPropose()
