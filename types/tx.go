@@ -17,3 +17,7 @@ func CaputeSizeForTxs(txs []Tx) int64 {
 
 	return dataSize
 }
+
+func (txs Txs) Append(tx Txs) Txs {
+	return append(txs, tx...)
+}
