@@ -60,6 +60,7 @@ func (exec *blockExcutor) ApplyBlock(state State, block *types.Block) (State, er
 	// 更新state的状态
 	_ = state.BlockTree.AddBlocks(block.LastBlockHash, block)
 	state.LastBlockTime = time.Now()
+	// TODO 将Last字段更新为最后一个提交的区块的信息
 	state.LastBlockHash = block.BlockHash
 	state.LastBlockSlot = block.Slot
 
@@ -101,14 +102,24 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 
 // 从mempool中打包交易
 func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *types.Proposal {
-	// reap all tx from mempool
+
+	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
+	parentBlock := state.NewBranch()
+
+	// step 2 reap all tx from mempool
 	// 需要变更mempool的接口，reap时候要选择没有冲突的交易
 	txs := exec.mempool.ReapMaxTxs(-1)
-	block := types.MakeBlock(state.ChainID, nextSlot, txs)
+	block := types.MakeBlock(txs)
+
+	// step 3将区块头填补完整
+	block.Fill(
+		state.ChainID, nextSlot,
+		types.ProposalBlock,
+		parentBlock.BlockHash, state.Validators.Hash(),
+	)
+
 	return &types.Proposal{
-		ChainID: state.ChainID,
-		Slot:    nextSlot,
-		Block:   block,
+		Block: block,
 	}
 }
 

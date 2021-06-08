@@ -2,6 +2,7 @@ package state
 
 import (
 	"chainbft_demo/types"
+	tmtype "github.com/tendermint/tendermint/types"
 	"time"
 )
 
@@ -9,9 +10,12 @@ func NewState(
 	chainID string,
 	InitialSlot types.LTime) State {
 	return State{
-		ChainID:     chainID,
-		InitialSlot: InitialSlot,
+		ChainID:         chainID,
+		InitialSlot:     InitialSlot,
+		PreCommitBlocks: types.NewBlockSet(),
+		SuspectBlocks:   types.NewBlockSet(),
 	}
+
 }
 
 // 有限确定状态机的一个状态节点
@@ -21,6 +25,7 @@ type State struct {
 	// 初始设定值 const value
 	ChainID     string
 	InitialSlot types.LTime // 初始Slot
+	Validators  *tmtype.ValidatorSet
 
 	// 最后提交的区块的信息
 	LastBlockSlot types.LTime
@@ -29,8 +34,8 @@ type State struct {
 
 	// uncommitted blocks
 	// TODO 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
-	PreCommitBlocks []*types.Block
-	SuspectBlocks   []*types.Block
+	PreCommitBlocks *types.BlockSet
+	SuspectBlocks   *types.BlockSet
 
 	// block tree - 所有收到非error区块组织形成的树，根节点一定是genesis block
 	BlockTree *types.BlockTree
@@ -47,8 +52,8 @@ func (state *State) Copy() State {
 		LastBlockSlot:   state.LastBlockSlot,
 		LastBlockHash:   make([]byte, len(state.LastBlockHash)),
 		LastBlockTime:   state.LastBlockTime,
-		PreCommitBlocks: make([]*types.Block, len(state.PreCommitBlocks)),
-		SuspectBlocks:   make([]*types.Block, len(state.SuspectBlocks)),
+		PreCommitBlocks: state.PreCommitBlocks,
+		SuspectBlocks:   state.SuspectBlocks,
 		BlockTree:       &types.BlockTree{},
 		LastResultsHash: make([]byte, len(state.LastResultsHash)),
 	}
@@ -64,12 +69,25 @@ func (state *State) NewBranch() *types.Block {
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
-	for _, _ = range blocks {
-		// TODO  把block从state中的PreCommitBlocks和SuspectBlocks移除
-	}
+	state.PreCommitBlocks.RemoveBlocks(blocks)
+	state.SuspectBlocks.RemoveBlocks(blocks)
 }
 
-// 在当前状态，根据新的block给出可以提交的区块
+// 在当前状态，根据新的block给出可以提交的区块 TODO
 func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
-	return state.PreCommitBlocks
+	return []*types.Block{}
+}
+
+// 每收到一个区块尝试更新区块到合适的位置
+func (state *State) UpdateState(block *types.Block) {
+	if block.BlockState == types.SuspectBlock {
+		state.SuspectBlocks.AddBlock(block)
+	} else if block.BlockState == types.PrecommitBlock {
+		state.PreCommitBlocks.AddBlock(block)
+	}
+
+	// TODO如果evidence quorum不为空，更新以往到区块的信息
+	if !block.Evidences.IsEmpty() {
+
+	}
 }

@@ -272,14 +272,8 @@ func (cs *ConsensusState) defaultProposal() {
 	// 特殊，提案前先更新状态
 	cs.updateStep(cstype.RoundStepPropose)
 
-	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
-	_ = cs.state.NewBranch()
-
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
-
-	// step 3 填补proposal中的字段 完成打包阶段
-	proposal.Fill()
 
 	//  向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
