@@ -25,6 +25,7 @@ func (Mempool) Update(
 ) error {
 	return nil
 }
+func (Mempool) LockTxs(_ types.Txs) error     { return nil }
 func (Mempool) Flush()                        {}
 func (Mempool) TxsAvailable() <-chan struct{} { return make(chan struct{}) }
 func (Mempool) TxsBytes() int64               { return 0 }

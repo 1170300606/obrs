@@ -157,9 +157,8 @@ func (mem *ListMempool) Unlock() {
 }
 
 // Caller负责加锁
-func (mem *ListMempool) Update(slot types.LTime, txs types.Txs) error {
-
-	for _, tx := range txs {
+func (mem *ListMempool) Update(slot types.LTime, toRemoveTxs types.Txs) error {
+	for _, tx := range toRemoveTxs {
 		// 将提交的交易添加到cache中
 		mem.cache.Push(tx)
 
@@ -169,6 +168,12 @@ func (mem *ListMempool) Update(slot types.LTime, txs types.Txs) error {
 	}
 
 	mem.slot = slot
+	return nil
+}
+
+// TODO toLockTxs变更状态
+// Caller负责加锁
+func (mem *ListMempool) LockTxs(_ types.Txs) error {
 	return nil
 }
 
@@ -253,10 +258,10 @@ type nopTxCache struct {
 func (cache nopTxCache) Reset() {
 	return
 }
-func (cache nopTxCache) Push(tx types.Tx) bool {
+func (cache nopTxCache) Push(_ types.Tx) bool {
 	return true
 }
-func (cache nopTxCache) Remove(tx types.Tx) {
+func (cache nopTxCache) Remove(_ types.Tx) {
 	return
 }
 
@@ -281,5 +286,5 @@ func TxKey(tx types.Tx) [TxKeySize]byte {
 }
 
 func txID(tx []byte) []byte {
-	return nil
+	return types.Tx(tx).Hash()
 }
