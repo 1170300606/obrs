@@ -2,6 +2,8 @@ package types
 
 import "bytes"
 
+// BlockSet 用来表示区块的一个集合，里面的数据会频繁更新，读写均衡
+// 正常情况集合内不会维护太多数据
 type BlockSet struct {
 	blocks []*Block
 }

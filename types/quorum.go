@@ -23,7 +23,14 @@ func (q QuorumType) String() string {
 	}
 }
 
-// 由2t+1vote组成
+func NewQuorum() Quorum {
+	return Quorum{
+		Type:      0,
+		Signature: nil,
+	}
+}
+
+// Quorum明确的表示某个区块有2t+1个节点赞同或反对
 type Quorum struct {
 	Type      QuorumType
 	Signature tmbytes.HexBytes
@@ -37,9 +44,9 @@ func (q *Quorum) IsEmpty() bool {
 }
 
 // TODO 将votes还原成聚合签名
-func NewQuorum(votes []*Vote) Quorum {
-	return Quorum{
-		Type:      0,
-		Signature: nil,
-	}
+func (q *Quorum) Generate(votes []Vote, qtype QuorumType) error {
+	q.Signature = []byte("aggregated signature")
+	q.Type = qtype
+
+	return nil
 }

@@ -12,7 +12,6 @@ var (
 )
 
 // block组成的多叉树
-// 只保存区块header
 type BlockTree struct {
 	mtx  sync.RWMutex
 	root *treeNode
@@ -74,4 +73,9 @@ func (tree *BlockTree) queryNodeByHash(hash []byte) (*treeNode, error) {
 	}
 
 	return nil, ErrNoQueryBlock
+}
+
+// TODO 找到树最新的区块 - 定义参见协议细节
+func (tree *BlockTree) GetLatestBlock() (*Block, error) {
+	return tree.root.data, nil
 }

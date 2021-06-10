@@ -5,12 +5,31 @@ import (
 	"time"
 )
 
+type VoteType uint8
+
+const (
+	SupportVote = VoteType(1)
+	AgainstVote = VoteType(2)
+)
+
+func (t VoteType) String() string {
+	switch t {
+	case SupportVote:
+		return "SupportVote"
+	case AgainstVote:
+		return "AgainstVote"
+	default:
+		return "UnkownVote"
+	}
+}
+
+// Vote - 针对某个提案的单个投票，一个节点只能在一个slot发布一个vote
 type Vote struct {
-	Slot      int64            `json:"slot"`
-	BlockHash tmbytes.HexBytes `json:"block_hash"` // 如果该字段为空说明节点投反对票
-	// 明确的表明立场
-	Timestamp        time.Time `json:"timestamp"`
-	ValidatorAddress Address   `json:"validator_address"`
-	ValidatorIndex   int32     `json:"validator_index"`
-	Signature        []byte    `json:"signature"`
+	Slot             LTime            `json:"slot"`
+	BlockHash        tmbytes.HexBytes `json:"block_hash"`
+	Type             VoteType         `json:"Vote_type"`
+	Timestamp        time.Time        `json:"timestamp"`
+	ValidatorAddress Address          `json:"validator_address"`
+	ValidatorIndex   int32            `json:"validator_index"`
+	Signature        tmbytes.HexBytes `json:"signature"`
 }
