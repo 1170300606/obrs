@@ -48,6 +48,13 @@ func (exec *blockExcutor) ApplyBlock(state State, block *types.Block) (State, er
 		return state, ErrInvalidBlock(err)
 	}
 
+	// 首先将这轮slot收到的block里面的交易在mempool中变更状态
+	exec.mempool.Lock()
+	if err := exec.mempool.LockTxs(block.Txs); err != nil {
+		exec.logger.Error("Lock txs in mempool failed.", "raason", err)
+	}
+	exec.mempool.Unlock()
+
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(block)
 
@@ -60,8 +67,6 @@ func (exec *blockExcutor) ApplyBlock(state State, block *types.Block) (State, er
 	// 更新state的状态
 	_ = state.BlockTree.AddBlocks(block.LastBlockHash, block)
 	state.LastBlockTime = time.Now()
-	// TODO 将Last字段更新为最后一个提交的区块的信息
-	state.LastBlockHash = block.BlockHash
 	state.LastBlockSlot = block.Slot
 
 	return state, err
@@ -88,14 +93,20 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 
 	// 提交成功后更新mempool，首先加锁
 	exec.mempool.Lock()
-	exec.mempool.Update(0, toRemovesTxs)
+	if err := exec.mempool.Update(0, toRemovesTxs); err != nil {
+		exec.logger.Error("Update tx in mempool failed.", "reason", err)
+	}
 	exec.mempool.Unlock()
 
 	newState := state.Copy()
-	// 更新precommit blocks
+	// 更新precommit blocks&suspected blocks
 	newState.CommitBlocks(toCommitblocks)
+
 	// TODO 更新提交后的merkle root
 	newState.LastResultsHash = newState.LastResultsHash
+
+	// TODO 将Last字段更新为最后一个提交的区块的信息
+	//newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
 
 	return newState, nil
 }
@@ -107,7 +118,7 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 	parentBlock := state.NewBranch()
 
 	// step 2 reap all tx from mempool
-	// 需要变更mempool的接口，reap时候要选择没有冲突的交易
+	// reap时候要选择没有冲突的交易
 	txs := exec.mempool.ReapMaxTxs(-1)
 	block := types.MakeBlock(txs)
 
@@ -123,15 +134,12 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 	}
 }
 
-// 根绝当前的state验证一个区块是否合法
-// TODO
+// TODO 根绝当前的state验证一个区块是否合法
 func (exec *blockExcutor) validateBlock(state State, block *types.Block) error {
 	// 先检验区块基本的信息是否正确
 	if err := block.ValidteBasic(); err != nil {
 		return err
 	}
-
-	// TODO 检验block是否符合state
 
 	return nil
 }

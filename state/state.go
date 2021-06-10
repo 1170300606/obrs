@@ -33,7 +33,7 @@ type State struct {
 	LastBlockTime time.Time // 提交的时间 - 物理时间
 
 	// uncommitted blocks
-	// TODO 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
+	// 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
 	PreCommitBlocks *types.BlockSet
 	SuspectBlocks   *types.BlockSet
 
@@ -63,9 +63,16 @@ func (state *State) Copy() State {
 	return newState
 }
 
-// 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块
+// 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块 - 一般返回最长/深的区块
+// TODO 在收到新的区块以前，重复调用保持幂等性
 func (state *State) NewBranch() *types.Block {
-	return nil
+	return &types.Block{
+		Header:    types.Header{},
+		Data:      types.Data{},
+		Quorum:    types.Quorum{},
+		Evidences: types.Quorum{},
+		Commit:    nil,
+	}
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
@@ -74,6 +81,7 @@ func (state *State) CommitBlocks(blocks []*types.Block) {
 }
 
 // 在当前状态，根据新的block给出可以提交的区块 TODO
+// 要为每个可以提交的区块生成commit
 func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 	return []*types.Block{}
 }
