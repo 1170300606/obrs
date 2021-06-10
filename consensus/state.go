@@ -10,6 +10,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
+	tmtype "github.com/tendermint/tendermint/types"
 	"sync"
 	"time"
 )
@@ -40,7 +41,8 @@ type ConsensusState struct {
 	// 共识内部状态
 	mtx sync.Mutex
 	cstype.RoundState
-	state state.State // 最后一个区块提交后的系统状态
+	state     state.State // 最后一个区块提交后的系统状态
+	lastState state.State // 倒数第二个区块提交的系统状态
 
 	// !state changes may be triggered by: msgs from peers,
 	// msgs from ourself, or by timeouts
@@ -59,6 +61,7 @@ type ConsensusOption func(*ConsensusState)
 
 func NewDefaultConsensusState(
 	config *config.ConsensusConfig,
+	initSlot types.LTime,
 	blockExec state.BlockExecutor,
 	blockStore store.Store,
 	state state.State,
@@ -66,28 +69,39 @@ func NewDefaultConsensusState(
 ) *ConsensusState {
 	cs := NewConsensusState(
 		config,
+		initSlot,
 		blockExec,
 		blockStore,
 		state,
 		options...)
 	cs.decideProposal = cs.defaultProposal
+	cs.setProposal = cs.defaultSetProposal
 
 	return cs
 }
 
 func NewConsensusState(
 	config *config.ConsensusConfig,
+	initSlot types.LTime,
 	blockExec state.BlockExecutor,
 	blockStore store.Store,
 	state state.State,
 	options ...ConsensusOption,
 ) *ConsensusState {
 	cs := &ConsensusState{
-		config:           config,
-		blockExec:        blockExec,
-		blockStore:       blockStore,
-		slotClock:        NewSlotClock(types.LtimeZero),
-		RoundState:       cstype.RoundState{},
+		config:     config,
+		blockExec:  blockExec,
+		blockStore: blockStore,
+		slotClock:  NewSlotClock(types.LtimeZero),
+		RoundState: cstype.RoundState{
+			CurSlot:    initSlot,
+			LastSlot:   initSlot,
+			Step:       cstype.RoundStepWait,
+			Validator:  nil,
+			Validators: nil,
+			Proposal:   nil,
+			VoteSet:    cstype.MakeSlotVoteSet(),
+		},
 		state:            state,
 		peerMsgQueue:     make(chan msgInfo),
 		internalMsgQueue: make(chan msgInfo),
@@ -118,6 +132,18 @@ func SetReactor(reactor *Reactor) ConsensusOption {
 	}
 }
 
+func SetValidtor(validator tmtype.PrivValidator) ConsensusOption {
+	return func(cs *ConsensusState) {
+		cs.Validator = validator
+	}
+}
+
+func SetValidtorSet(validatorSet *tmtype.ValidatorSet) ConsensusOption {
+	return func(cs *ConsensusState) {
+		cs.Validators = validatorSet
+	}
+}
+
 func (cs *ConsensusState) OnStart() error {
 	go cs.recieveRoutine()
 	go cs.recieveEventRoutine()
@@ -141,23 +167,32 @@ func (cs *ConsensusState) recieveRoutine() {
 			cs.Logger.Debug("recieved timeout event", "timeout", ti)
 			// 统一处理超时事件，目前只有切换slot的超时事件发生
 			cs.handleTimeOut(ti)
+		case <-cs.Quit():
+			cs.Logger.Debug("recieveRoute quit.")
+			return
 		}
 	}
 }
 
 //recieveEventRoutine 负责处理内部的状态事件，完成状态跃迁
 func (cs *ConsensusState) recieveEventRoutine() {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+
 	// event
 	for {
 		select {
 		case msginfo := <-cs.internalMsgQueue:
 			//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
-			if err := msginfo.msg.ValidateBasic(); err != nil {
+			if err := msginfo.Msg.ValidateBasic(); err != nil {
 				cs.Logger.Error("internal event validated failed", "err", err)
 				continue
 			}
-			event := msginfo.msg.(cstype.RoundEvent)
+			event := msginfo.Msg.(cstype.RoundEvent)
 			cs.handleEvent(event)
+		case <-cs.Quit():
+			cs.Logger.Debug("recieveEventRoutine quit.")
+			return
 		}
 	}
 }
@@ -166,7 +201,41 @@ func (cs *ConsensusState) recieveEventRoutine() {
 // BlockMessage
 // VoteMessage
 // SlotTimeout
-func (cs *ConsensusState) handleMsg(msg msgInfo) {
+func (cs *ConsensusState) handleMsg(mi msgInfo) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+
+	msg, peerID := mi.Msg, mi.PeerID
+
+	switch msg := msg.(type) {
+	case *ProposalMessage:
+		// 收到新的提案
+		// TODO核验提案身份 - slot是否一致、提案人是否正确
+		//if !msg.Proposal.Slot.Equal(cs.CurSlot){
+		//	//
+		//	return
+		//}
+		if err := msg.Proposal.ValidteBasic(); err != nil {
+			cs.Logger.Error("receive wrong proposal.", "error", err)
+			return
+		}
+
+		cs.Logger.Debug("receive proposal", "slot", cs.CurSlot, "proposal", msg.Proposal)
+		cs.setProposal(msg.Proposal)
+	case *VoteMessage:
+		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
+		// 根据added，来决定是否转发该投票，只有正确加入voteset的投票才可以继续转发
+		// added为false不代表vote不合法，可能只是已经添加过了
+		added, err := cs.TryAddVote(msg.Vote, peerID)
+		if err != nil {
+			cs.Logger.Error("add vote failed.", "reason", err, "vote", msg.Vote)
+			return
+		}
+		if added {
+			// TODO 向reactor转发该消息
+		}
+	}
+
 }
 
 // 状态机转移函数
@@ -206,6 +275,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 
 	// TODO 完成切换到slot 首先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
+	cs.LastSlot = cs.CurSlot
 	cs.CurSlot = cs.slotClock.GetSlot()
 
 	// 如果切换成功，首先应该重新启动定时器
@@ -235,7 +305,16 @@ func (cs *ConsensusState) enterApply() {
 
 	// 函数会和blockExec交互
 	// 决定提交哪些区块
-	//cs.blockExec.ApplyBlock(cs.RoundState.Proposal.Block)
+	stateCopy := cs.state.Copy()
+	newState, err := cs.blockExec.ApplyBlock(stateCopy, cs.RoundState.Proposal.Block)
+	if err != nil {
+		cs.Logger.Error("Apply block failed.", "slot", cs.CurSlot, "reason", err)
+		return
+	}
+
+	// apply 成功，变更状态
+	cs.lastState = cs.state
+	cs.state = newState
 }
 
 // enterPropose 如果节点是该轮slot的leader，则在这里提出提案并推送给reactor广播
@@ -255,6 +334,7 @@ func (cs *ConsensusState) enterPropose() {
 		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepApply, cs.Step))
 	}
 	if !cs.isProposer() {
+		cs.Logger.Debug("I'm not slot leader. proposePhase end.")
 		return
 	}
 
@@ -263,10 +343,12 @@ func (cs *ConsensusState) enterPropose() {
 }
 
 // 判断这个节点是不是这轮slot的 leader
+// TODO 如何判断是否是该轮的leader
 func (cs *ConsensusState) isProposer() bool {
 	return true
 }
 
+// defaultProposal 默认生成提案的函数
 func (cs *ConsensusState) defaultProposal() {
 	cs.Logger.Debug("proposer prepare to use block executor to get proposal", "slot", cs.CurSlot)
 	// 特殊，提案前先更新状态
@@ -275,8 +357,64 @@ func (cs *ConsensusState) defaultProposal() {
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
 
-	//  向reactor传递block
+	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
+	cs.reactor.BroadcastProposal(proposal)
+}
+
+// defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
+func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
+	var err error
+	defer func() {
+		if err == nil {
+			// 提案正确且符合提案规则，投赞成票
+			cs.signVote(proposal, true)
+		} else {
+			// 投反对票
+			cs.signVote(proposal, false)
+		}
+	}()
+
+	// TODO 再次验证proposal - 签名、颁发者是否正确、提案是否符合提案规则
+	// TODO 如果合格尝试根据提案中的support-quorum更新到对应的区块上
+	cs.Proposal = proposal
+
+	return nil
+}
+
+// TODO 根据isApproved决定投票性质，生成投票并且传递到reactor广播
+func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
+	votetype := types.SupportVote
+	if isApproved == false {
+		votetype = types.AgainstVote
+	}
+
+	validatorPubKey, err := cs.Validator.GetPubKey()
+
+	if err != nil {
+		return
+	}
+	vote := &types.Vote{
+		Slot:             cs.CurSlot,
+		BlockHash:        proposal.BlockHash,
+		Type:             votetype,
+		Timestamp:        time.Now(),
+		ValidatorAddress: types.GetAddress(validatorPubKey),
+		ValidatorIndex:   -1,
+		Signature:        nil,
+	}
+
+	cs.Logger.Debug("proposal vote", "vote", vote)
+
+	// 传递给reactor去发送
+	cs.reactor.BroadcastVote(vote)
+}
+
+// TODO TryAddVote 收到投票后尝试将投票加到对应的区块上
+// peerID用来判断是否有重复票
+func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
+	// 首先验证投票的合法性 - 签名、slot是否一致
+	return true, nil
 }
 
 func (cs *ConsensusState) updateSlot(slot types.LTime) {
@@ -297,8 +435,6 @@ func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 	default:
 		// NOTE: using the go-routine means our votes can
 		// be processed out of order.
-		// TODO: use CList here for strict determinism and
-		// attempt push to internalMsgQueue in receiveRoutine
 		cs.Logger.Debug("internal msg queue is full; using a go-routine")
 		go func() { cs.internalMsgQueue <- mi }()
 	}
@@ -307,8 +443,8 @@ func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 // ----- MsgInfo -----
 // 与reactor之间通信的消息格式
 type msgInfo struct {
-	msg    Message
-	peerId p2p.ID
+	Msg    Message
+	PeerID p2p.ID
 }
 
 // internally generated messages which may update the state

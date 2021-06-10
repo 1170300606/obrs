@@ -86,12 +86,13 @@ type RoundState struct {
 
 	// 基础的共识信息
 	CurSlot    types.LTime
+	LastSlot   types.LTime
 	Step       RoundStepType
-	Validator  *tmtype.PrivValidator // 验证者的信息 - 私钥，用来签名
-	Validators *tmtype.ValidatorSet  // 目前共识中的所有的验证者集合
+	Validator  tmtype.PrivValidator // 验证者的信息 - 私钥，用来签名
+	Validators *tmtype.ValidatorSet // 目前共识中的所有的验证者集合
 
 	Proposal *types.Proposal // 这一轮收到的合法提案
-	VoteSet  types.Vote      // 这一轮的投票集合
+	VoteSet  *SlotVoteSet    // slot=> voteSet的投票集合
 
 	LastCommit *types.Commit // 最后一个 committed区块的commit
 }

@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"chainbft_demo/types"
 	"fmt"
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/sync"
@@ -142,7 +143,42 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	}
 }
 
+// TODO BroadcastProposal 向其他人广播提案
+func (conR *Reactor) BroadcastProposal(proposal *types.Proposal) {
+
+}
+
+// TODO BroadcastVote 向其他节点广播投票
+func (conR *Reactor) BroadcastVote(vote *types.Vote) {
+
+}
+
 // --------------------------
 func decode(msgBytes []byte) (string, error) {
 	return string(msgBytes), nil
+}
+
+type ProposalMessage struct {
+	Proposal *types.Proposal
+}
+
+func (msg *ProposalMessage) ValidateBasic() error {
+	return msg.Proposal.ValidteBasic()
+}
+
+func (msg *ProposalMessage) String() string {
+	return fmt.Sprintf("[Proposal %v]", msg.Proposal)
+}
+
+type VoteMessage struct {
+	Vote *types.Vote
+}
+
+func (msg *VoteMessage) ValidateBasic() error {
+	// TODO 验证
+	return nil
+}
+
+func (msg *VoteMessage) String() string {
+	return fmt.Sprintf("[Vote %v]", msg.Vote)
 }
