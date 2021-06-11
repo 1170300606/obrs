@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	mempool "chainbft_demo/mempool"
 	bkstate "chainbft_demo/state"
 	"chainbft_demo/types"
 	"github.com/stretchr/testify/assert"
@@ -22,8 +23,14 @@ func newConsensusState() (*ConsensusState, cleanup) {
 }
 
 func newConsensusStateWithConfig(config *config.Config) (*ConsensusState, cleanup) {
-	state := bkstate.NewState("testchan", types.LtimeZero)
-	cs := NewConsensusState(config.Consensus, nil, nil, state)
+	chainID := "CONSENSUS_TEST"
+	geneBlock := types.MakeGenesisBlock(chainID, []byte("signature"))
+
+	state := bkstate.MakeGenesisState(chainID, types.LtimeZero, geneBlock)
+
+	mempool := mempool.NewListMempool(config.Mempool)
+	blockExec := bkstate.NewBlockExecutor(mempool)
+	cs := NewConsensusState(config.Consensus, types.LtimeZero, blockExec, nil, state)
 
 	cs.SetLogger(log.NewFilter(log.TestingLogger(), log.AllowDebug()))
 	return cs, func() {
