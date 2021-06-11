@@ -6,12 +6,23 @@ import (
 	"time"
 )
 
+func MakeGenesisState(
+	chainID string,
+	InitialSlot types.LTime,
+	genesisBlock *types.Block,
+) State {
+	state := NewState(chainID, InitialSlot)
+	state.BlockTree = types.NewBlockTree(genesisBlock)
+	return state
+}
+
 func NewState(
 	chainID string,
 	InitialSlot types.LTime) State {
 	return State{
 		ChainID:         chainID,
 		InitialSlot:     InitialSlot,
+		Validators:      tmtype.NewValidatorSet([]*tmtype.Validator{}),
 		PreCommitBlocks: types.NewBlockSet(),
 		SuspectBlocks:   types.NewBlockSet(),
 	}
@@ -54,11 +65,12 @@ func (state *State) Copy() State {
 		LastBlockTime:   state.LastBlockTime,
 		PreCommitBlocks: state.PreCommitBlocks,
 		SuspectBlocks:   state.SuspectBlocks,
-		BlockTree:       &types.BlockTree{},
+		BlockTree:       state.BlockTree,
 		LastResultsHash: make([]byte, len(state.LastResultsHash)),
 	}
 
 	copy(newState.LastBlockHash, state.LastBlockHash)
+	copy(newState.LastResultsHash, state.LastResultsHash)
 
 	return newState
 }

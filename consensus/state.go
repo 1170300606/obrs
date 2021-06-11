@@ -98,7 +98,7 @@ func NewConsensusState(
 			LastSlot:   initSlot,
 			Step:       cstype.RoundStepWait,
 			Validator:  nil,
-			Validators: nil,
+			Validators: tmtype.NewValidatorSet([]*tmtype.Validator{}),
 			Proposal:   nil,
 			VoteSet:    cstype.MakeSlotVoteSet(),
 		},
@@ -278,6 +278,9 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	cs.LastSlot = cs.CurSlot
 	cs.CurSlot = cs.slotClock.GetSlot()
 
+	// 设置空提案
+	cs.Proposal = types.MakeEmptyProposal()
+
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
 
@@ -302,6 +305,8 @@ func (cs *ConsensusState) enterApply() {
 	if cs.Step != cstype.RoundStepSlot {
 		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
 	}
+
+	// TODO 尝试根据目前的投票生成quorum
 
 	// 函数会和blockExec交互
 	// 决定提交哪些区块

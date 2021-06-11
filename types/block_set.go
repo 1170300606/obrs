@@ -33,3 +33,11 @@ func (bs *BlockSet) AddBlocks(blocks ...*Block) {
 
 // TODO 将blocks从BlockSet中删除
 func (bs *BlockSet) RemoveBlocks(blocks []*Block) {}
+
+func (bs *BlockSet) Size() int {
+	return len(bs.blocks)
+}
+
+func (bs *BlockSet) Blocks() []*Block {
+	return bs.blocks
+}

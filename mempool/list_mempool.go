@@ -14,9 +14,9 @@ const (
 	TxKeySize = 32
 )
 
-func NewListMempool(config *cfg.MempoolConfig, slot types.LTime, options ...ListMempoolOption) *ListMempool {
+func NewListMempool(config *cfg.MempoolConfig, options ...ListMempoolOption) *ListMempool {
 	mem := &ListMempool{
-		slot:   slot,
+		slot:   types.LtimeZero,
 		config: config,
 		txs:    clist.New(),
 	}
@@ -96,8 +96,8 @@ func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
 	}
 	memTx.senders.Store(txinfo.SenderID, struct{}{})
 
-	//mem.logger.Debug("added tx", "tx", tx, "txinfo", txinfo)
 	mem.addTx(memTx)
+	mem.logger.Debug("added tx", "tx", tx, "txinfo", txinfo, "memLen", mem.txs.Len())
 
 	return nil
 }
@@ -142,6 +142,8 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		txs = append(txs, memTx.tx)
+		mem.logger.Debug("reap tx", "tx", memTx.tx)
+
 	}
 	return txs
 }

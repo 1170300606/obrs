@@ -11,6 +11,17 @@ var (
 	ErrNoQueryBlock    = errors.New("No such Block queried by hash value")
 )
 
+func NewBlockTree(genBlock *Block) *BlockTree {
+	root := &treeNode{
+		prev:     nil,
+		children: nil,
+		data:     genBlock,
+	}
+	return &BlockTree{
+		root: root,
+	}
+}
+
 // block组成的多叉树
 type BlockTree struct {
 	mtx  sync.RWMutex
@@ -73,6 +84,14 @@ func (tree *BlockTree) queryNodeByHash(hash []byte) (*treeNode, error) {
 	}
 
 	return nil, ErrNoQueryBlock
+}
+
+func (tree *BlockTree) QueryBlockByHash(hash []byte) (*Block, error) {
+	tnode, err := tree.queryNodeByHash(hash)
+	if tnode != nil {
+		return tnode.data, err
+	}
+	return nil, err
 }
 
 // TODO 找到树最新的区块 - 定义参见协议细节

@@ -1,7 +1,7 @@
 package state
 
 import (
-	"chainbft_demo/mempool"
+	mempl "chainbft_demo/mempool"
 	"chainbft_demo/store"
 	"chainbft_demo/types"
 	"github.com/tendermint/tendermint/libs/log"
@@ -19,7 +19,7 @@ type BlockExecutor interface {
 	SetLogger(logger log.Logger)
 }
 
-func NewBlockExec(mempool mempool.Mempool) BlockExecutor {
+func NewBlockExecutor(mempool mempl.Mempool) BlockExecutor {
 	blockexec := &blockExcutor{
 		mempool: mempool,
 	}
@@ -28,7 +28,7 @@ func NewBlockExec(mempool mempool.Mempool) BlockExecutor {
 }
 
 type blockExcutor struct {
-	mempool mempool.Mempool
+	mempool mempl.Mempool
 
 	db store.Store
 
@@ -42,22 +42,31 @@ func (exec *blockExcutor) SetLogger(logger log.Logger) {
 
 // ApplyBlock implements BlockExecutor
 // apply上一轮slot的proposal，同时会尝试更新pre-commit区块
-func (exec *blockExcutor) ApplyBlock(state State, block *types.Block) (State, error) {
+func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State, error) {
 	// 首先验证区块是否合法，不合法直接返回愿状态
-	if err := exec.validateBlock(state, block); err != nil {
+	if err := exec.validateBlock(state, proposal); err != nil {
 		return state, ErrInvalidBlock(err)
 	}
 
 	// 首先将这轮slot收到的block里面的交易在mempool中变更状态
 	exec.mempool.Lock()
-	if err := exec.mempool.LockTxs(block.Txs); err != nil {
+	exec.logger.Debug("prepare to locks proposal txs")
+	if err := exec.mempool.LockTxs(proposal.Txs); err != nil {
 		exec.logger.Error("Lock txs in mempool failed.", "raason", err)
 	}
 	exec.mempool.Unlock()
 
-	// 决定哪些区块可以提交
-	toCommitBlock := state.decideCommitBlocks(block)
+	// 根据proposal的投票情况更新blockSet
+	if proposal.BlockState == types.PrecommitBlock {
+		state.PreCommitBlocks.AddBlock(proposal)
+	} else if proposal.BlockState == types.SuspectBlock {
+		state.SuspectBlocks.AddBlock(proposal)
+	}
 
+	// 决定哪些区块可以提交
+	toCommitBlock := state.decideCommitBlocks(proposal)
+
+	exec.logger.Debug("prepare to commit blocks", "toCommitBlocks", toCommitBlock)
 	// 正式提交交易，在这里可能不止提交一个交易，如果提交成功后还要负责删除mempool中的交易
 	state, err := exec.Commit(state, toCommitBlock)
 	if err != nil {
@@ -65,9 +74,9 @@ func (exec *blockExcutor) ApplyBlock(state State, block *types.Block) (State, er
 	}
 
 	// 更新state的状态
-	_ = state.BlockTree.AddBlocks(block.LastBlockHash, block)
+	_ = state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
 	state.LastBlockTime = time.Now()
-	state.LastBlockSlot = block.Slot
+	state.LastBlockSlot = proposal.Slot
 
 	return state, err
 }
