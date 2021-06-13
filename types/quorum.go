@@ -32,6 +32,8 @@ func NewQuorum() Quorum {
 
 // Quorum明确的表示某个区块有2t+1个节点赞同或反对
 type Quorum struct {
+	SLot      LTime
+	BlockHash tmbytes.HexBytes
 	Type      QuorumType
 	Signature tmbytes.HexBytes
 }

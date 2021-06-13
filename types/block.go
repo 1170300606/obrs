@@ -9,6 +9,7 @@ import (
 type BlockState uint8
 
 const (
+	DefaultBlock   = BlockState(0)  // 空白区块 该轮slot尚未收到任何提案
 	ProposalBlock  = BlockState(1)  // 提案状态 尚未收到任何投票的区块，即提案
 	ErrorBlock     = BlockState(2)  // 错误的区块，收到against-quorum的区块
 	SuspectBlock   = BlockState(3)  // 没有收到任意quorum的区块
@@ -18,6 +19,8 @@ const (
 
 func (state BlockState) String() string {
 	switch state {
+	case DefaultBlock:
+		return "DefaultBlock"
 	case ProposalBlock:
 		return "ProposalBlock"
 	case ErrorBlock:
@@ -35,12 +38,12 @@ func (state BlockState) String() string {
 
 // local blockchain维护的区块的基本单位
 type Block struct {
-	mtx       sync.Mutex
-	Header    `json:"header""`
-	Data      `json:"data"`
-	Quorum    `json:"quorum"` // 当前区块收到的投票合法集合
-	Evidences Quorum          `json:"evidences"` //  指向前面区块的support-quorum
-	Commit    *Commit         `json:"commit"`    // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
+	mtx        sync.Mutex
+	Header     `json:"header""`
+	Data       `json:"data"`
+	VoteQuorum Quorum   `json:"quorum"`    // 当前区块收到的投票合法集合
+	Evidences  []Quorum `json:"evidences"` //  指向前面区块的support-quorum
+	Commit     *Commit  `json:"commit"`    // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
 }
 
 // 检验一个block是否合法 - 这里的合法指的是没有明确的错误

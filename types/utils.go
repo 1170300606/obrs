@@ -14,15 +14,11 @@ func MakeGenesisBlock(ChainID string, supportQuorum tmbytes.HexBytes) *Block {
 		Data: Data{
 			Txs: Txs{},
 		},
-		Quorum: Quorum{
-			// TODO
-			SupportQuorum,
-			nil,
+		VoteQuorum: Quorum{
+			Type:      SupportQuorum,
+			BlockHash: []byte{},
 		},
-		Evidences: Quorum{
-			EmptyQuorum,
-			supportQuorum,
-		},
+		Evidences: []Quorum{},
 	}
 }
 
@@ -40,11 +36,11 @@ func MakeBlock(txs []Tx) *Block {
 func MakeEmptyProposal() *Proposal {
 	return &Proposal{
 		&Block{
-			Header:    Header{},
-			Data:      Data{Txs: Txs{}},
-			Quorum:    Quorum{},
-			Evidences: Quorum{},
-			Commit:    nil,
+			Header:     Header{},
+			Data:       Data{Txs: Txs{}},
+			VoteQuorum: Quorum{},
+			Evidences:  []Quorum{},
+			Commit:     nil,
 		},
 	}
 }

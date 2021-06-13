@@ -31,8 +31,23 @@ func (bs *BlockSet) AddBlocks(blocks ...*Block) {
 	bs.blocks = append(bs.blocks, blocks...)
 }
 
-// TODO 将blocks从BlockSet中删除
-func (bs *BlockSet) RemoveBlocks(blocks []*Block) {}
+// 将blocks从BlockSet中删除
+func (bs *BlockSet) RemoveBlocks(blocks []*Block) {
+	queryMap := make(map[*Block]struct{})
+
+	for _, block := range blocks {
+		queryMap[block] = struct{}{}
+	}
+
+	newBlocks := []*Block{}
+	for _, block := range bs.blocks {
+		if _, ok := queryMap[block]; !ok {
+			newBlocks = append(newBlocks, block)
+		}
+	}
+
+	bs.blocks = newBlocks
+}
 
 func (bs *BlockSet) Size() int {
 	return len(bs.blocks)
