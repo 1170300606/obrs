@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+var (
+	DefaultBlockParent = []byte("single unused block")
+)
+
 // 临时配置区
 const (
 	slotTimeOut        = 5 * time.Second   // 两个slot之间的间隔
@@ -53,7 +57,7 @@ type ConsensusState struct {
 	reactor          *Reactor     // 用来往其他交易广播消息的接口，在这里是否引入事件模型 - 来简化通信的复杂
 
 	// 方便测试重写逻辑
-	decideProposal func()                               // 生成提案的函数
+	decideProposal func() *types.Proposal               // 生成提案的函数
 	setProposal    func(proposal *types.Proposal) error // 待定 不知道有啥用
 }
 
@@ -232,7 +236,8 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 			return
 		}
 		if added {
-			// TODO 向reactor转发该消息
+			// 向reactor转发该消息
+			cs.reactor.BroadcastVote(msg.Vote)
 		}
 	}
 
@@ -258,7 +263,7 @@ func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
 func (cs *ConsensusState) handleTimeOut(ti timeoutInfo) {
 	switch ti.Step {
 	case cstype.RoundStepSlot:
-		// TODO 切换到新的SLot
+		// 切换到新的SLot
 		cs.sendInternalMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventNewSlot, ti.Slot}, ""})
 	}
 }
@@ -273,13 +278,14 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	}()
 	cs.Logger.Debug("enter new slot", "slot", slot)
 
-	// TODO 完成切换到slot 首先更新状态机的状态，如将状态暂时保存起来等
+	// 完成切换到slot ？是否需要先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
 	cs.LastSlot = cs.CurSlot
 	cs.CurSlot = cs.slotClock.GetSlot()
 
-	// 设置空提案
+	// 设置空提案 该提案不follow任何一个区块
 	cs.Proposal = types.MakeEmptyProposal()
+	cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.state.Validators.Hash())
 
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
@@ -306,7 +312,25 @@ func (cs *ConsensusState) enterApply() {
 		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
 	}
 
-	// TODO 尝试根据目前的投票生成quorum
+	// 尝试根据目前的投票生成quorum
+	voteset := cs.VoteSet.GetVotesBySlot(cs.LastSlot)
+	if voteset != nil {
+		// 有收到投票
+		quorum := voteset.TryGenQuorum()
+		cs.Proposal.Block.VoteQuorum = quorum
+		if quorum.Type == types.SupportQuorum {
+			cs.Proposal.Block.BlockState = types.PrecommitBlock
+		} else if quorum.Type == types.AgainstQuorum {
+			cs.Proposal.BlockState = types.ErrorBlock
+		} else {
+			cs.Proposal.BlockState = types.SuspectBlock
+		}
+	} else {
+		// 没有收到一张投票
+		// TODO 是否接受区块待定
+		cs.Logger.Debug("proposal receive no votes from other peers", "proposal", cs.Proposal)
+		cs.Proposal.BlockState = types.SuspectBlock
+	}
 
 	// 函数会和blockExec交互
 	// 决定提交哪些区块
@@ -354,7 +378,7 @@ func (cs *ConsensusState) isProposer() bool {
 }
 
 // defaultProposal 默认生成提案的函数
-func (cs *ConsensusState) defaultProposal() {
+func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	cs.Logger.Debug("proposer prepare to use block executor to get proposal", "slot", cs.CurSlot)
 	// 特殊，提案前先更新状态
 	cs.updateStep(cstype.RoundStepPropose)
@@ -365,6 +389,8 @@ func (cs *ConsensusState) defaultProposal() {
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
 	cs.reactor.BroadcastProposal(proposal)
+
+	return proposal
 }
 
 // defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
@@ -381,14 +407,41 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	}()
 
 	// TODO 再次验证proposal - 签名、颁发者是否正确、提案是否符合提案规则
-	// TODO 如果合格尝试根据提案中的support-quorum更新到对应的区块上
+
+	// 尝试根据提案中的support-quorum更新到对应的区块上
+	if proposal.Evidences != nil {
+		cs.Logger.Debug("try to update block supprot quorun according proposal's evidence")
+		for _, evidence := range proposal.Evidences {
+			// TODO 首先检验evidence的正确性
+
+			blockhash := evidence.BlockHash
+			block, err := cs.state.BlockTree.QueryBlockByHash(blockhash)
+			if err != nil {
+				cs.Logger.Error("include no such block from evidence", "blockhash", blockhash, "evidence", evidence)
+				continue
+			}
+
+			if block.BlockState == types.CommiitedBlock {
+				// 已经提交的区块
+				continue
+			}
+			block.VoteQuorum = evidence
+			// 更新blockstate
+			if evidence.Type == types.SupportQuorum {
+				block.BlockState = types.PrecommitBlock
+			} else if evidence.Type == types.AgainstQuorum {
+				block.BlockState = types.ErrorBlock
+			}
+		}
+	}
 	cs.Proposal = proposal
 
 	return nil
 }
 
-// TODO 根据isApproved决定投票性质，生成投票并且传递到reactor广播
+// signVote 根据isApproved决定投票性质，生成投票并且传递到reactor广播
 func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
+	// TODO 判断提案是否符合发布规则
 	votetype := types.SupportVote
 	if isApproved == false {
 		votetype = types.AgainstVote
@@ -415,10 +468,15 @@ func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
 	cs.reactor.BroadcastVote(vote)
 }
 
-// TODO TryAddVote 收到投票后尝试将投票加到对应的区块上
-// peerID用来判断是否有重复票
+// TryAddVote 收到投票后尝试将投票加到对应的区块上
+// 如果返回(true,nil)则添加成功 如果返回(false,err)则投票本身有问题；否则返回(false,nil)说明投票已经添加过了
 func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
-	// 首先验证投票的合法性 - 签名、slot是否一致
+	// TODO 验证投票的合法性 - 签名
+
+	err := cs.VoteSet.AddVote(vote)
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

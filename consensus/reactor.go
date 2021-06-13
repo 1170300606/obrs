@@ -150,7 +150,7 @@ func (conR *Reactor) BroadcastProposal(proposal *types.Proposal) {
 
 // TODO BroadcastVote 向其他节点广播投票
 func (conR *Reactor) BroadcastVote(vote *types.Vote) {
-
+	conR.Logger.Debug("reactor recieve vote from consensus", "vote", vote)
 }
 
 // --------------------------
