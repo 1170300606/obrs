@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"chainbft_demo/types"
 	"fmt"
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/sync"
@@ -26,6 +27,12 @@ func init() {
 	rand.Seed(time.Now().Unix())
 }
 
+// ------ Message ------
+type Message interface {
+	ValidateBasic() error
+}
+
+// ------- Reactor ------
 type Reactor struct {
 	p2p.BaseReactor
 
@@ -39,6 +46,8 @@ type Reactor struct {
 	id   p2p.ID
 
 	forward *cmap.CMap
+
+	consensus *ConsensusState
 }
 
 func (conR *Reactor) SetId(id p2p.ID) {
@@ -65,29 +74,14 @@ func NewReactor(options ...ReactorOption) *Reactor {
 
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Consensus Reactor started.")
-
 	go func() {
-		//  fake consensus
-		d := 10 * time.Second
-		timer := time.NewTimer(d)
 	LOOP:
 		for {
 			select {
 			case <-conR.quit:
-				timer.Stop()
 				break LOOP
-			case <-timer.C:
 				conR.Logger.Info(fmt.Sprintf("%s=%v", conR.id, conR.seed))
 
-				msgBytes := []byte(fmt.Sprintf("%s=%s", conR.id, conR.seed))
-
-				go func(seed int64) {
-					resp := <-conR.Switch.Broadcast(TestChannel, msgBytes)
-					conR.Logger.Info(fmt.Sprintf("%v的广播结果: %v", seed, resp))
-				}(conR.seed)
-				conR.seed += 1
-
-				timer.Reset(d)
 			}
 		}
 	}()
@@ -149,7 +143,42 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	}
 }
 
+// TODO BroadcastProposal 向其他人广播提案
+func (conR *Reactor) BroadcastProposal(proposal *types.Proposal) {
+
+}
+
+// TODO BroadcastVote 向其他节点广播投票
+func (conR *Reactor) BroadcastVote(vote *types.Vote) {
+	conR.Logger.Debug("reactor recieve vote from consensus", "vote", vote)
+}
+
 // --------------------------
 func decode(msgBytes []byte) (string, error) {
 	return string(msgBytes), nil
+}
+
+type ProposalMessage struct {
+	Proposal *types.Proposal
+}
+
+func (msg *ProposalMessage) ValidateBasic() error {
+	return msg.Proposal.ValidteBasic()
+}
+
+func (msg *ProposalMessage) String() string {
+	return fmt.Sprintf("[Proposal %v]", msg.Proposal)
+}
+
+type VoteMessage struct {
+	Vote *types.Vote
+}
+
+func (msg *VoteMessage) ValidateBasic() error {
+	// TODO 验证
+	return nil
+}
+
+func (msg *VoteMessage) String() string {
+	return fmt.Sprintf("[Vote %v]", msg.Vote)
 }
