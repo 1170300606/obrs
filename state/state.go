@@ -48,6 +48,9 @@ type State struct {
 	PreCommitBlocks *types.BlockSet
 	SuspectBlocks   *types.BlockSet
 
+	// TODO 取代PreCommitBlocks & SuspectBlocks
+	UnCommitBlocks *types.BlockSet
+
 	// block tree - 所有收到非error区块组织形成的树，根节点一定是genesis block
 	BlockTree *types.BlockTree
 
@@ -78,13 +81,8 @@ func (state *State) Copy() State {
 // 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块 - 一般返回最长/深的区块
 // TODO 在收到新的区块以前，重复调用保持幂等性
 func (state *State) NewBranch() *types.Block {
-	return &types.Block{
-		Header:    types.Header{},
-		Data:      types.Data{},
-		Quorum:    types.Quorum{},
-		Evidences: types.Quorum{},
-		Commit:    nil,
-	}
+	b, _ := state.BlockTree.GetLatestBlock()
+	return b
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
@@ -92,7 +90,7 @@ func (state *State) CommitBlocks(blocks []*types.Block) {
 	state.SuspectBlocks.RemoveBlocks(blocks)
 }
 
-// 在当前状态，根据新的block给出可以提交的区块 TODO
+// TODO 在当前状态，根据新的block给出可以提交的区块
 // 要为每个可以提交的区块生成commit
 func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 	return []*types.Block{}
@@ -107,7 +105,4 @@ func (state *State) UpdateState(block *types.Block) {
 	}
 
 	// TODO如果evidence quorum不为空，更新以往到区块的信息
-	if !block.Evidences.IsEmpty() {
-
-	}
 }
