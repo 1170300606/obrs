@@ -33,3 +33,14 @@ type Vote struct {
 	ValidatorIndex   int32            `json:"validator_index"`
 	Signature        tmbytes.HexBytes `json:"signature"`
 }
+
+// Equal 并不是判断两个vote是否一样，而是判断这两个投票的人和发布的时间是否一致
+func (v *Vote) Equal(other *Vote) bool {
+	if other == nil || v == nil {
+		return false
+	}
+
+	// 同一个人在同一个slot即为同一个投票
+	return v.Slot.Equal(other.Slot) &&
+		v.ValidatorAddress.Equal(other.ValidatorAddress)
+}
