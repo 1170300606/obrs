@@ -83,15 +83,63 @@ func (state *State) CommitBlocks(blocks []*types.Block) {
 	state.UnCommitBlocks.RemoveBlocks(blocks)
 }
 
-// TODO 在当前状态，根据新的block给出可以提交的区块
+// decideCommitBlocks 在当前状态，根据新的block给出可以提交的区块
 // 要为每个可以提交的区块生成commit
 func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
-	return []*types.Block{}
+	toCommitBlocks := []*types.Block{}
+
+	blocks := state.UnCommitBlocks.Blocks()
+	idx := -1
+	// 从后往前找到第一个可以提交的区块
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if blocks[i].Commit == nil {
+			continue
+		}
+		if blocks[i].Commit.IsReady() == true {
+			idx = i
+			break
+		}
+	}
+
+	if idx != -1 {
+		// 最后一个可以提交的区块开始，前面的区块都可以提交
+		toCommitBlocks = append(toCommitBlocks, blocks[0:idx+1]...)
+	}
+
+	return toCommitBlocks
 }
 
-// 每收到一个区块尝试更新区块到合适的位置
+// 将block内的support quorum更新到对应的区块上
 func (state *State) UpdateState(block *types.Block) {
-	state.UnCommitBlocks.AddBlock(block)
-
 	// TODO如果evidence quorum不为空，更新以往到区块的信息
+	if block.Evidences != nil {
+		for _, evidence := range block.Evidences {
+			// TODO 首先检验evidence的正确性 - 签名的正确性
+
+			blockhash := evidence.BlockHash
+			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
+			if block == nil {
+				continue
+			}
+
+			if block.Commit == nil {
+				block.Commit = &types.Commit{}
+			}
+
+			if block.BlockState == types.CommiitedBlock {
+				// 已经提交的区块
+				continue
+			}
+
+			block.Commit.SetQuorum(&evidence)
+			block.VoteQuorum = evidence
+			// 更新blockstate
+			if evidence.Type == types.SupportQuorum {
+				block.BlockState = types.PrecommitBlock
+			} else if evidence.Type == types.AgainstQuorum {
+				block.BlockState = types.ErrorBlock
+			}
+		}
+	}
+
 }

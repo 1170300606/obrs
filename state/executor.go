@@ -72,7 +72,10 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	// 更新state的状态
 	_ = state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
 	state.LastBlockTime = time.Now()
-	state.LastBlockSlot = proposal.Slot
+	if len(toCommitBlock) > 0 {
+		// 有提交的区块 更新state的slot
+		state.LastBlockSlot = toCommitBlock[len(toCommitBlock)-1].Slot
+	}
 
 	return state, err
 }

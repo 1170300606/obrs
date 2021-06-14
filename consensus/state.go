@@ -323,10 +323,28 @@ func (cs *ConsensusState) enterApply() {
 	voteset := cs.VoteSet.GetVotesBySlot(cs.LastSlot)
 	if voteset != nil {
 		// 有收到投票
+		witness := cs.Proposal.Block
 		quorum := voteset.TryGenQuorum(threshold)
 		cs.Proposal.Block.VoteQuorum = quorum
+
 		if quorum.Type == types.SupportQuorum {
 			cs.Proposal.Block.BlockState = types.PrecommitBlock
+
+			// 区块转为precommit block，为block里面的support-quorum指向的区块生成commit
+			if cs.Proposal.Evidences != nil {
+				for _, evidence := range cs.Proposal.Evidences {
+					if evidence.Type != types.SupportQuorum {
+						continue
+					}
+
+					block := cs.state.UnCommitBlocks.QueryBlockByHash(evidence.BlockHash)
+					if block == nil {
+						// 没有查到区块 可能已经提交
+						continue
+					}
+					block.Commit.SetWitness(witness)
+				}
+			}
 		} else if quorum.Type == types.AgainstQuorum {
 			cs.Proposal.BlockState = types.ErrorBlock
 		} else {
@@ -417,31 +435,8 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	// TODO 再次验证proposal - 签名、颁发者是否正确、提案是否符合提案规则
 
 	// 尝试根据提案中的support-quorum更新到对应的区块上
-	if proposal.Evidences != nil {
-		cs.Logger.Debug("try to update block supprot quorun according proposal's evidence")
-		for _, evidence := range proposal.Evidences {
-			// TODO 首先检验evidence的正确性
+	cs.state.UpdateState(proposal.Block)
 
-			blockhash := evidence.BlockHash
-			block, err := cs.state.BlockTree.QueryBlockByHash(blockhash)
-			if err != nil {
-				cs.Logger.Error("include no such block from evidence", "blockhash", blockhash, "evidence", evidence)
-				continue
-			}
-
-			if block.BlockState == types.CommiitedBlock {
-				// 已经提交的区块
-				continue
-			}
-			block.VoteQuorum = evidence
-			// 更新blockstate
-			if evidence.Type == types.SupportQuorum {
-				block.BlockState = types.PrecommitBlock
-			} else if evidence.Type == types.AgainstQuorum {
-				block.BlockState = types.ErrorBlock
-			}
-		}
-	}
 	cs.Proposal = proposal
 
 	// 接受提案 然后转发
