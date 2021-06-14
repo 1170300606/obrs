@@ -57,11 +57,7 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	exec.mempool.Unlock()
 
 	// 根据proposal的投票情况更新blockSet
-	if proposal.BlockState == types.PrecommitBlock {
-		state.PreCommitBlocks.AddBlock(proposal)
-	} else if proposal.BlockState == types.SuspectBlock {
-		state.SuspectBlocks.AddBlock(proposal)
-	}
+	state.UnCommitBlocks.AddBlock(proposal)
 
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(proposal)
@@ -114,8 +110,10 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 	// TODO 更新提交后的merkle root
 	newState.LastResultsHash = newState.LastResultsHash
 
-	// TODO 将Last字段更新为最后一个提交的区块的信息
-	//newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
+	// 将Last字段更新为最后一个提交的区块的信息
+	if len(toCommitblocks) > 0 {
+		newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
+	}
 
 	return newState, nil
 }

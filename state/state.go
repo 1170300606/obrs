@@ -20,11 +20,10 @@ func NewState(
 	chainID string,
 	InitialSlot types.LTime) State {
 	return State{
-		ChainID:         chainID,
-		InitialSlot:     InitialSlot,
-		Validators:      tmtype.NewValidatorSet([]*tmtype.Validator{}),
-		PreCommitBlocks: types.NewBlockSet(),
-		SuspectBlocks:   types.NewBlockSet(),
+		ChainID:        chainID,
+		InitialSlot:    InitialSlot,
+		Validators:     tmtype.NewValidatorSet([]*tmtype.Validator{}),
+		UnCommitBlocks: types.NewBlockSet(),
 	}
 
 }
@@ -45,10 +44,6 @@ type State struct {
 
 	// uncommitted blocks
 	// 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
-	PreCommitBlocks *types.BlockSet
-	SuspectBlocks   *types.BlockSet
-
-	// TODO 取代PreCommitBlocks & SuspectBlocks
 	UnCommitBlocks *types.BlockSet
 
 	// block tree - 所有收到非error区块组织形成的树，根节点一定是genesis block
@@ -66,8 +61,7 @@ func (state *State) Copy() State {
 		LastBlockSlot:   state.LastBlockSlot,
 		LastBlockHash:   make([]byte, len(state.LastBlockHash)),
 		LastBlockTime:   state.LastBlockTime,
-		PreCommitBlocks: state.PreCommitBlocks,
-		SuspectBlocks:   state.SuspectBlocks,
+		UnCommitBlocks:  state.UnCommitBlocks,
 		BlockTree:       state.BlockTree,
 		LastResultsHash: make([]byte, len(state.LastResultsHash)),
 	}
@@ -86,8 +80,7 @@ func (state *State) NewBranch() *types.Block {
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
-	state.PreCommitBlocks.RemoveBlocks(blocks)
-	state.SuspectBlocks.RemoveBlocks(blocks)
+	state.UnCommitBlocks.RemoveBlocks(blocks)
 }
 
 // TODO 在当前状态，根据新的block给出可以提交的区块
@@ -98,11 +91,7 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 
 // 每收到一个区块尝试更新区块到合适的位置
 func (state *State) UpdateState(block *types.Block) {
-	if block.BlockState == types.SuspectBlock {
-		state.SuspectBlocks.AddBlock(block)
-	} else if block.BlockState == types.PrecommitBlock {
-		state.PreCommitBlocks.AddBlock(block)
-	}
+	state.UnCommitBlocks.AddBlock(block)
 
 	// TODO如果evidence quorum不为空，更新以往到区块的信息
 }
