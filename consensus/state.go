@@ -21,6 +21,7 @@ var (
 
 // 临时配置区
 const (
+	threshold          = 3
 	slotTimeOut        = 5 * time.Second   // 两个slot之间的间隔
 	immediateTimeOut   = 0 * time.Second   //
 	initialSlotTimeout = 100 * time.Second // 节点启动后clock默认超时时间
@@ -53,7 +54,8 @@ type ConsensusState struct {
 
 	// 通信管道
 	peerMsgQueue     chan msgInfo // 处理来自其他节点的消息（包含区块、投票）
-	internalMsgQueue chan msgInfo // 内部消息流通的chan，主要是状态机的状态切换的事件chan
+	internalMsgQueue chan msgInfo // 内部消息流通的chan，主要是内部的投票、提案
+	eventMsgQueue    chan msgInfo // 内部消息流通的chan，主要是状态机的状态切换的事件chan
 	reactor          *Reactor     // 用来往其他交易广播消息的接口，在这里是否引入事件模型 - 来简化通信的复杂
 
 	// 方便测试重写逻辑
@@ -109,6 +111,7 @@ func NewConsensusState(
 		state:            state,
 		peerMsgQueue:     make(chan msgInfo),
 		internalMsgQueue: make(chan msgInfo),
+		eventMsgQueue:    make(chan msgInfo),
 	}
 
 	cs.BaseService = *service.NewBaseService(nil, "CONSENSUS", cs)
@@ -167,6 +170,10 @@ func (cs *ConsensusState) recieveRoutine() {
 			// 接收到其他节点的消息
 			cs.handleMsg(msginfo)
 
+		case msginfo := <-cs.internalMsgQueue:
+			// 收到内部生成的投票or提案
+			cs.handleMsg(msginfo)
+
 		case ti := <-cs.slotClock.Chan():
 			cs.Logger.Debug("recieved timeout event", "timeout", ti)
 			// 统一处理超时事件，目前只有切换slot的超时事件发生
@@ -180,13 +187,10 @@ func (cs *ConsensusState) recieveRoutine() {
 
 //recieveEventRoutine 负责处理内部的状态事件，完成状态跃迁
 func (cs *ConsensusState) recieveEventRoutine() {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
-
 	// event
 	for {
 		select {
-		case msginfo := <-cs.internalMsgQueue:
+		case msginfo := <-cs.eventMsgQueue:
 			//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
 			if err := msginfo.Msg.ValidateBasic(); err != nil {
 				cs.Logger.Error("internal event validated failed", "err", err)
@@ -245,6 +249,9 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 
 // 状态机转移函数
 func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+
 	cs.Logger.Debug("recieve event", "event", event)
 	switch event.Type {
 	case cstype.RoundEventNewSlot:
@@ -264,7 +271,7 @@ func (cs *ConsensusState) handleTimeOut(ti timeoutInfo) {
 	switch ti.Step {
 	case cstype.RoundStepSlot:
 		// 切换到新的SLot
-		cs.sendInternalMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventNewSlot, ti.Slot}, ""})
+		cs.sendEventMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventNewSlot, ti.Slot}, ""})
 	}
 }
 
@@ -292,7 +299,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 
 	// 关于状态机的切换，是直接在这里调用下一轮的函数；
 	// 还是在统一的处理函数如handleStateMsg，然后根据不同的消息类型调用不同的阶段函数
-	cs.sendInternalMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventApply, cs.CurSlot}, ""})
+	cs.sendEventMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventApply, cs.CurSlot}, ""})
 }
 
 // enterApply 进入Apply阶段
@@ -316,7 +323,7 @@ func (cs *ConsensusState) enterApply() {
 	voteset := cs.VoteSet.GetVotesBySlot(cs.LastSlot)
 	if voteset != nil {
 		// 有收到投票
-		quorum := voteset.TryGenQuorum()
+		quorum := voteset.TryGenQuorum(threshold)
 		cs.Proposal.Block.VoteQuorum = quorum
 		if quorum.Type == types.SupportQuorum {
 			cs.Proposal.Block.BlockState = types.PrecommitBlock
@@ -388,7 +395,8 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
-	cs.reactor.BroadcastProposal(proposal)
+	// 通过内部chan传递到defaultSetproposal函数统一处理
+	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
 
 	return proposal
 }
@@ -436,6 +444,9 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	}
 	cs.Proposal = proposal
 
+	// 接受提案 然后转发
+	cs.reactor.BroadcastProposal(proposal)
+
 	return nil
 }
 
@@ -454,18 +465,18 @@ func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
 	}
 	vote := &types.Vote{
 		Slot:             cs.CurSlot,
-		BlockHash:        proposal.BlockHash,
+		BlockHash:        proposal.Hash(),
 		Type:             votetype,
 		Timestamp:        time.Now(),
 		ValidatorAddress: types.GetAddress(validatorPubKey),
 		ValidatorIndex:   -1,
-		Signature:        nil,
+		Signature:        []byte("signature"),
 	}
 
 	cs.Logger.Debug("proposal vote", "vote", vote)
 
-	// 传递给reactor去发送
-	cs.reactor.BroadcastVote(vote)
+	// 通过internalChan传递
+	cs.sendInternalMessage(msgInfo{&VoteMessage{Vote: vote}, ""})
 }
 
 // TryAddVote 收到投票后尝试将投票加到对应的区块上
@@ -491,6 +502,19 @@ func (cs *ConsensusState) updateStep(step cstype.RoundStepType) {
 
 // send a msg into the receiveRoutine regarding our own proposal, block part, or vote
 // 往内部的channel写入event
+// 直接写可能会因为ceiveRoutine blocked从而导致本协程block
+func (cs *ConsensusState) sendEventMessage(mi msgInfo) {
+	select {
+	case cs.eventMsgQueue <- mi:
+	default:
+		// NOTE: using the go-routine means our votes can
+		// be processed out of order.
+		cs.Logger.Debug("internal msg queue is full; using a go-routine")
+		go func() { cs.eventMsgQueue <- mi }()
+	}
+}
+
+// send a msg into the receiveRoutine regarding our own proposal, block part, or vote
 // 直接写可能会因为ceiveRoutine blocked从而导致本协程block
 func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 	select {

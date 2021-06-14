@@ -24,7 +24,7 @@ func (slotvs *SlotVoteSet) AddVote(vote *types.Vote) error {
 	slot := vote.Slot
 	vs, exsit := slotvs.slotVoteSet[slot]
 	if !exsit {
-		vs = NewVoteSet()
+		vs = NewVoteSet(vote.BlockHash)
 		slotvs.slotVoteSet[slot] = vs
 	}
 	return vs.AddVote(vote)
@@ -39,14 +39,17 @@ func (slotvs *SlotVoteSet) GetVotesBySlot(slot types.LTime) *voteSet {
 	return vs
 }
 
-func NewVoteSet() *voteSet {
+func NewVoteSet(hash []byte) *voteSet {
 	return &voteSet{
-		votes: []*types.Vote{},
+		blockHash: hash,
+		votes:     []*types.Vote{},
 	}
 }
 
+// voteSet 一个slot内的投票集合，暂时假定收到的投票都是同一个区块
 type voteSet struct {
-	votes []*types.Vote
+	blockHash []byte
+	votes     []*types.Vote
 }
 
 func (vs *voteSet) AddVote(vote *types.Vote) error {
@@ -55,7 +58,7 @@ func (vs *voteSet) AddVote(vote *types.Vote) error {
 			return ErrDuplicateVote
 		}
 	}
-	vs.votes = append(vs.votes)
+	vs.votes = append(vs.votes, vote)
 	return nil
 }
 
@@ -63,13 +66,35 @@ func (vs *voteSet) GetVotes() []*types.Vote {
 	return vs.votes
 }
 
-// TODO TryGenQuorum 尝试根据vote生成quorum - 还原出聚合签名，选出大多数
-func (vs *voteSet) TryGenQuorum() types.Quorum {
-
+// TryGenQuorum 尝试根据vote生成quorum - 还原出聚合签名，选出大多数
+func (vs *voteSet) TryGenQuorum(threshold int) types.Quorum {
+	supportVotes := []*types.Vote{}
+	againstVotes := []*types.Vote{}
+	for _, vote := range vs.votes {
+		if vote.Type == types.AgainstVote {
+			againstVotes = append(againstVotes, vote)
+		} else if vote.Type == types.SupportVote {
+			supportVotes = append(supportVotes, vote)
+		}
+	}
 	signature := []byte("")
+	quorumType := types.EmptyQuorum
+	// TODO 门限签名还原出原始签名
+
+	if len(supportVotes) >= threshold {
+		// 有足够的赞成票
+		signature = []byte("support signature")
+		quorumType = types.SupportQuorum
+	} else if len(againstVotes) >= threshold {
+		signature = []byte("against signature")
+		quorumType = types.AgainstQuorum
+	} else {
+		signature = nil
+	}
+
 	return types.Quorum{
-		BlockHash: nil,
-		Type:      types.SupportQuorum,
+		BlockHash: vs.blockHash,
+		Type:      quorumType,
 		Signature: signature,
 	}
 }
