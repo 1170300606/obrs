@@ -18,14 +18,15 @@ func NewBlockTree(genBlock *Block) *BlockTree {
 		data:     genBlock,
 	}
 	return &BlockTree{
-		root: root,
+		root:     root,
+		lastNode: root,
 	}
 }
 
 // block组成的多叉树
 type BlockTree struct {
-	mtx  sync.RWMutex
-	root *treeNode
+	mtx            sync.RWMutex
+	root, lastNode *treeNode
 }
 
 type treeNode struct {
@@ -53,7 +54,7 @@ func (tree *BlockTree) AddBlocks(parentHash []byte, data *Block) error {
 		children: make([]*treeNode, 1),
 		data:     data,
 	}
-
+	tree.lastNode = newNode
 	tree.mtx.Lock()
 	defer tree.mtx.Unlock()
 	parent.mtx.Lock()
@@ -96,5 +97,5 @@ func (tree *BlockTree) QueryBlockByHash(hash []byte) (*Block, error) {
 
 // TODO 找到树最新的区块 - 定义参见协议细节
 func (tree *BlockTree) GetLatestBlock() (*Block, error) {
-	return tree.root.data, nil
+	return tree.lastNode.data, nil
 }
