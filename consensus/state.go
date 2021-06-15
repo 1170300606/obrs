@@ -229,7 +229,10 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		}
 
 		cs.Logger.Debug("receive proposal", "slot", cs.CurSlot, "proposal", msg.Proposal)
-		cs.setProposal(msg.Proposal)
+		if cs.Proposal == nil || cs.Proposal.BlockState == types.DefaultBlock {
+			// 如果不为DefaultBlock 说明节点已经收到一个提案了 不再接受其他提案
+			cs.setProposal(msg.Proposal)
+		}
 	case *VoteMessage:
 		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
 		// 根据added，来决定是否转发该投票，只有正确加入voteset的投票才可以继续转发
@@ -342,6 +345,7 @@ func (cs *ConsensusState) enterApply() {
 						// 没有查到区块 可能已经提交
 						continue
 					}
+					block.Commit.SetQuorum(&evidence)
 					block.Commit.SetWitness(witness)
 				}
 			}
@@ -421,9 +425,8 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 // defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
 func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
-	var err error
 	defer func() {
-		if err == nil {
+		if cs.state.IsMatch(proposal) {
 			// 提案正确且符合提案规则，投赞成票
 			cs.signVote(proposal, true)
 		} else {

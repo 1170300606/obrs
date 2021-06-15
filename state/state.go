@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"chainbft_demo/types"
 	tmtype "github.com/tendermint/tendermint/types"
 	"time"
@@ -72,11 +73,26 @@ func (state *State) Copy() State {
 	return newState
 }
 
-// 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块 - 一般返回最长/深的区块
-// TODO 在收到新的区块以前，重复调用保持幂等性
-func (state *State) NewBranch() *types.Block {
-	b, _ := state.BlockTree.GetLatestBlock()
-	return b
+// NewBranch 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块 - 一般返回最长/深的区块
+// 返回应该follow的区块，以及这个区块所在路径上所precommit的区块list
+// 在收到新的区块以前，重复调用保持幂等性
+func (state *State) NewBranch() (*types.Block, []*types.Block) {
+	b := state.BlockTree.GetLatestBlock()
+	precommitBlocks := state.BlockTree.GetBlockByFilter(b.Hash(), func(block *types.Block) bool {
+		if block.BlockState == types.PrecommitBlock {
+			return true
+		}
+		return false
+	})
+
+	return b, precommitBlocks
+}
+
+// IsMatch 判断一个提案是否符合提案规则
+func (state *State) IsMatch(proposal *types.Proposal) bool {
+	b := state.BlockTree.GetLatestBlock()
+
+	return bytes.Equal(b.Hash(), proposal.LastBlockHash)
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
@@ -109,9 +125,9 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 	return toCommitBlocks
 }
 
-// 将block内的support quorum更新到对应的区块上
+// UpdateState 每次收到新的提案，不论提案的正确与否，都将block内的support quorum更新到对应的区块上
 func (state *State) UpdateState(block *types.Block) {
-	// TODO如果evidence quorum不为空，更新以往到区块的信息
+	// 如果evidence quorum不为空，更新以往到区块的信息
 	if block.Evidences != nil {
 		for _, evidence := range block.Evidences {
 			// TODO 首先检验evidence的正确性 - 签名的正确性
@@ -131,7 +147,6 @@ func (state *State) UpdateState(block *types.Block) {
 				continue
 			}
 
-			block.Commit.SetQuorum(&evidence)
 			block.VoteQuorum = evidence
 			// 更新blockstate
 			if evidence.Type == types.SupportQuorum {
@@ -141,5 +156,4 @@ func (state *State) UpdateState(block *types.Block) {
 			}
 		}
 	}
-
 }

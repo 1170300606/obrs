@@ -123,9 +123,8 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 
 // 从mempool中打包交易
 func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *types.Proposal {
-
 	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
-	parentBlock := state.NewBranch()
+	parentBlock, precommitBlocks := state.NewBranch()
 
 	// step 2 reap all tx from mempool
 	// reap时候要选择没有冲突的交易
@@ -138,6 +137,12 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 		types.ProposalBlock,
 		parentBlock.BlockHash, state.Validators.Hash(),
 	)
+
+	// step 4 生成evidence
+	block.Evidences = []types.Quorum{}
+	for _, block := range precommitBlocks {
+		block.Evidences = append(block.Evidences, block.VoteQuorum)
+	}
 
 	return &types.Proposal{
 		Block: block,
