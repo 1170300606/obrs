@@ -24,3 +24,12 @@ func (t LTime) Equal(other LTime) bool {
 	}
 	return false
 }
+
+func (t LTime) Greater(other LTime) bool {
+	curT := int64(t)
+	otherT := int64(other)
+	if curT > otherT {
+		return true
+	}
+	return false
+}
