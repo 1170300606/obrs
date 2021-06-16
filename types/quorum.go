@@ -56,11 +56,3 @@ func (q *Quorum) Copy() Quorum {
 	copy(newQ.Signature, q.Signature)
 	return newQ
 }
-
-// TODO 将votes还原成聚合签名
-func (q *Quorum) Generate(votes []Vote, qtype QuorumType) error {
-	q.Signature = []byte("aggregated signature")
-	q.Type = qtype
-
-	return nil
-}
