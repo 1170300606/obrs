@@ -28,7 +28,6 @@ var (
 	ErrWrongBLSPriv       = errors.New("bls private key is wrong")
 	ErrAggregateSignature = errors.New("Error in BLS aggregate process")
 	bn256_suite           = bn256.NewSuite()
-	test_seed             = "#### ##.Reader ##### ## be #### for testin"
 )
 
 const (
@@ -133,9 +132,6 @@ type PubKey []byte
 
 // Address is the SHA256-20 of the raw pubkey bytes.
 func (pubKey PubKey) Address() crypto.Address {
-	if len(pubKey) != PubKeySize {
-		panic("pubkey is incorrect size")
-	}
 	return crypto.Address(tmhash.SumTruncated(pubKey))
 }
 
