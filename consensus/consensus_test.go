@@ -33,6 +33,7 @@ func newBlockExecutorWithConfig(config *config.Config, mempool mempl.Mempool, lo
 		os.RemoveAll(config.RootDir)
 	}
 }
+
 func newConsensusState(memplfunc ...memplFunc) (*ConsensusState, cleanup) {
 	logger := log.NewFilter(log.TestingLogger(), log.AllowDebug())
 
@@ -54,7 +55,7 @@ func newConsensusStateWithConfig(config *config.Config, logger log.Logger, mempl
 	mempool.SetLogger(logger)
 	blockExec, _ := newBlockExecutorWithConfig(config, mempool, logger)
 
-	cs := NewConsensusState(config.Consensus, types.LtimeZero, blockExec, nil, state, SetValidtor(privval.GenFilePV("", "")))
+	cs := NewDefaultConsensusState(config.Consensus, types.LtimeZero, blockExec, nil, state, SetValidtor(privval.GenFilePV("", "")))
 
 	cs.SetLogger(logger)
 
@@ -179,8 +180,7 @@ func TestApplyWithSuspectProposal(t *testing.T) {
 	assert.Equal(t, types.SuspectBlock, proposal.BlockState) //  没有投票，该提案为suspect block
 }
 
-// TODO TestApplyWithSuppotQuorum 测试consensus apply动作，设置的提案有足够的supportVote
-
+// TestApplyWithSuppotQuorum 测试consensus apply动作，设置的提案有足够的supportVote
 func TestApplyWithSuppotQuorum(t *testing.T) {
 	txs := []types.Tx{}
 	cs, clean := newConsensusState(func(mem mempl.Mempool) {
@@ -203,9 +203,20 @@ func TestApplyWithSuppotQuorum(t *testing.T) {
 	// 手动设置提案
 	cs.updateStep(cstypes.RoundStepApply)
 	proposal := cs.defaultProposal()
-	cs.defaultSetProposal(proposal)
 
-	// TODO 手动增加投票
+	// 手动增加投票
+	for i := 0; i < threshold; i++ {
+		vote := &types.Vote{
+			Slot:             cs.CurSlot,
+			BlockHash:        proposal.Hash(),
+			Type:             types.SupportVote,
+			Timestamp:        time.Now(),
+			ValidatorAddress: nil,
+			ValidatorIndex:   int32(i),
+			Signature:        []byte(fmt.Sprintf("vote %v", i)),
+		}
+		cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, ""}
+	}
 
 	// 手动enterNewSlot
 	cs.updateStep(cstypes.RoundStepSlot)
@@ -217,5 +228,10 @@ func TestApplyWithSuppotQuorum(t *testing.T) {
 
 	assert.Equal(t, prevState, cs.lastState)
 	assert.NotEqual(t, prevState, cs.state)
-	assert.Equal(t, types.PrecommitBlock, proposal.BlockState) //  没有投票，该提案为suspect block
+	assert.NotNil(t, proposal.VoteQuorum, "proposal should have vote quorum")
+	assert.Equal(t, proposal.VoteQuorum.Type, types.SupportQuorum,
+		"proposal's voteQuorum should be supprot, but got %v",
+		proposal.VoteQuorum.Type.String(),
+	)
+	assert.Equal(t, types.PrecommitBlock, proposal.BlockState) //  有足够的投票，该提案为precommit block
 }

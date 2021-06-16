@@ -45,6 +45,18 @@ func (q *Quorum) IsEmpty() bool {
 	return false
 }
 
+func (q *Quorum) Copy() Quorum {
+	newQ := Quorum{
+		SLot:      q.SLot,
+		BlockHash: make([]byte, len(q.BlockHash)),
+		Type:      q.Type,
+		Signature: make([]byte, len(q.Signature)),
+	}
+	copy(newQ.BlockHash, q.BlockHash)
+	copy(newQ.Signature, q.Signature)
+	return newQ
+}
+
 // TODO 将votes还原成聚合签名
 func (q *Quorum) Generate(votes []Vote, qtype QuorumType) error {
 	q.Signature = []byte("aggregated signature")

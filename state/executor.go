@@ -57,11 +57,7 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	exec.mempool.Unlock()
 
 	// 根据proposal的投票情况更新blockSet
-	if proposal.BlockState == types.PrecommitBlock {
-		state.PreCommitBlocks.AddBlock(proposal)
-	} else if proposal.BlockState == types.SuspectBlock {
-		state.SuspectBlocks.AddBlock(proposal)
-	}
+	state.UnCommitBlocks.AddBlock(proposal)
 
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(proposal)
@@ -76,7 +72,10 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	// 更新state的状态
 	_ = state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
 	state.LastBlockTime = time.Now()
-	state.LastBlockSlot = proposal.Slot
+	if len(toCommitBlock) > 0 {
+		// 有提交的区块 更新state的slot
+		state.LastBlockSlot = toCommitBlock[len(toCommitBlock)-1].Slot
+	}
 
 	return state, err
 }
@@ -114,17 +113,18 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 	// TODO 更新提交后的merkle root
 	newState.LastResultsHash = newState.LastResultsHash
 
-	// TODO 将Last字段更新为最后一个提交的区块的信息
-	//newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
+	// 将Last字段更新为最后一个提交的区块的信息
+	if len(toCommitblocks) > 0 {
+		newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
+	}
 
 	return newState, nil
 }
 
 // 从mempool中打包交易
 func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *types.Proposal {
-
 	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
-	parentBlock := state.NewBranch()
+	parentBlock, precommitBlocks := state.NewBranch()
 
 	// step 2 reap all tx from mempool
 	// reap时候要选择没有冲突的交易
@@ -137,6 +137,12 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 		types.ProposalBlock,
 		parentBlock.BlockHash, state.Validators.Hash(),
 	)
+
+	// step 4 生成evidence
+	block.Evidences = []types.Quorum{}
+	for _, block := range precommitBlocks {
+		block.Evidences = append(block.Evidences, block.VoteQuorum)
+	}
 
 	return &types.Proposal{
 		Block: block,
