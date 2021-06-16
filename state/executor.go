@@ -1,9 +1,11 @@
 package state
 
 import (
+	"bytes"
 	mempl "chainbft_demo/mempool"
 	"chainbft_demo/store"
 	"chainbft_demo/types"
+	"errors"
 	"github.com/tendermint/tendermint/libs/log"
 	"time"
 )
@@ -141,7 +143,7 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 	// step 4 生成evidence
 	block.Evidences = []types.Quorum{}
 	for _, block := range precommitBlocks {
-		block.Evidences = append(block.Evidences, block.VoteQuorum)
+		block.Evidences = append(block.Evidences, block.VoteQuorum.Copy())
 	}
 
 	return &types.Proposal{
@@ -149,11 +151,16 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 	}
 }
 
-// TODO 根绝当前的state验证一个区块是否合法
+// 根绝当前的state验证一个区块是否合法
 func (exec *blockExcutor) validateBlock(state State, block *types.Block) error {
 	// 先检验区块基本的信息是否正确
 	if err := block.ValidteBasic(); err != nil {
 		return err
+	}
+
+	if !bytes.Equal(state.Validators.Hash(), block.ValidatorsHash) {
+		// 验证者集合不一致
+		return errors.New("block has different validator set")
 	}
 
 	return nil
