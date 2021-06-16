@@ -5,12 +5,12 @@ import (
 	"chainbft_demo/state"
 	"chainbft_demo/store"
 	"chainbft_demo/types"
+	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
-	tmtype "github.com/tendermint/tendermint/types"
 	"sync"
 	"time"
 )
@@ -48,9 +48,6 @@ type ConsensusState struct {
 	cstype.RoundState
 	state     state.State // 最后一个区块提交后的系统状态
 	lastState state.State // 倒数第二个区块提交的系统状态
-
-	// !state changes may be triggered by: msgs from peers,
-	// msgs from ourself, or by timeouts
 
 	// 通信管道
 	peerMsgQueue     chan msgInfo // 处理来自其他节点的消息（包含区块、投票）
@@ -103,9 +100,7 @@ func NewConsensusState(
 			CurSlot:    initSlot,
 			LastSlot:   initSlot,
 			Step:       cstype.RoundStepWait,
-			Validator:  nil,
-			Validators: tmtype.NewValidatorSet([]*tmtype.Validator{}),
-			Proposal:   nil,
+			Validators: types.NewValidatorSet([]*types.Validator{}),
 			VoteSet:    cstype.MakeSlotVoteSet(),
 		},
 		state:            state,
@@ -139,13 +134,14 @@ func SetReactor(reactor *Reactor) ConsensusOption {
 	}
 }
 
-func SetValidtor(validator tmtype.PrivValidator) ConsensusOption {
+func SetValidtor(validator types.PrivValidator) ConsensusOption {
 	return func(cs *ConsensusState) {
 		cs.Validator = validator
+		// TODO 设置validator index
 	}
 }
 
-func SetValidtorSet(validatorSet *tmtype.ValidatorSet) ConsensusOption {
+func SetValidtorSet(validatorSet *types.ValidatorSet) ConsensusOption {
 	return func(cs *ConsensusState) {
 		cs.Validators = validatorSet
 	}
@@ -293,6 +289,9 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	cs.LastSlot = cs.CurSlot
 	cs.CurSlot = cs.slotClock.GetSlot()
 
+	// 计算这一轮的proposer
+	cs.decideProposer()
+
 	// 设置空提案 该提案不follow任何一个区块
 	cs.Proposal = types.MakeEmptyProposal()
 	cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.state.Validators.Hash())
@@ -391,7 +390,10 @@ func (cs *ConsensusState) enterPropose() {
 	if cs.Step != cstype.RoundStepApply {
 		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepApply, cs.Step))
 	}
-	if !cs.isProposer() {
+
+	// 获得当前节点的validator数据
+	_, val := cs.Validators.GetByIndex(cs.ValIndex)
+	if !cs.isProposer(val) {
 		cs.Logger.Debug("I'm not slot leader. proposePhase end.")
 		return
 	}
@@ -401,9 +403,26 @@ func (cs *ConsensusState) enterPropose() {
 }
 
 // 判断这个节点是不是这轮slot的 leader
-// TODO 如何判断是否是该轮的leader
-func (cs *ConsensusState) isProposer() bool {
-	return true
+// 如何判断是否是该轮的leader
+func (cs *ConsensusState) isProposer(val *types.Validator) bool {
+	if val == nil {
+		return false
+	}
+
+	if cs.Proposer == nil {
+		cs.decideProposer()
+	}
+
+	if cs.Proposer.PubKey.Equals(val.PubKey) {
+		// 如果当前的validator和这一轮的proposer一致，说明他是该轮proposer
+		return true
+	}
+
+	return false
+}
+
+func (cs *ConsensusState) decideProposer() {
+	cs.Proposer = cs.Validators.GetProposer(cs.CurSlot)
 }
 
 // defaultProposal 默认生成提案的函数
@@ -414,6 +433,9 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
+
+	// step 3 生成签名
+	cs.Validator.SignProposal(cs.state.ChainID, proposal)
 
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
@@ -426,6 +448,7 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 // defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
 func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	defer func() {
+		// 判断提案是否符合发布规则
 		if cs.state.IsMatch(proposal) {
 			// 提案正确且符合提案规则，投赞成票
 			cs.signVote(proposal, true)
@@ -435,7 +458,22 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 		}
 	}()
 
-	// TODO 再次验证proposal - 签名、颁发者是否正确、提案是否符合提案规则
+	// 再次验证proposal - 签名、颁发者是否正确
+	// 验证提案的slot是否和当前的slot相等
+	if proposal.Slot.Equal(cs.CurSlot) {
+		return errors.New(fmt.Sprintf("proposal slot is not same, proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
+	}
+
+	// 验证提案人是否正确
+	_, val := cs.Validators.GetByAddress(proposal.ValidatorsHash)
+	if !cs.isProposer(val) {
+		return errors.New(fmt.Sprintf("%v is not this slot leader, expected: %v", val.String(), cs.Proposer.String()))
+	}
+
+	// 验证提案的签名
+	if !val.PubKey.VerifySignature(types.ProposalSignBytes(cs.state.ChainID, proposal), proposal.Signature) {
+		return errors.New("verifying proposal signature failed")
+	}
 
 	// 尝试根据提案中的support-quorum更新到对应的区块上
 	cs.state.UpdateState(proposal.Block)
@@ -450,7 +488,6 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 
 // signVote 根据isApproved决定投票性质，生成投票并且传递到reactor广播
 func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
-	// TODO 判断提案是否符合发布规则
 	votetype := types.SupportVote
 	if isApproved == false {
 		votetype = types.AgainstVote
@@ -480,7 +517,16 @@ func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
 // TryAddVote 收到投票后尝试将投票加到对应的区块上
 // 如果返回(true,nil)则添加成功 如果返回(false,err)则投票本身有问题；否则返回(false,nil)说明投票已经添加过了
 func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
-	// TODO 验证投票的合法性 - 签名
+	// 验证投票的合法性 - 签名
+	valIdx, val := cs.Validators.GetByAddress(vote.ValidatorAddress)
+	if valIdx != vote.ValidatorIndex {
+		return false, errors.New(fmt.Sprintf("vote validator has wrong index"))
+	}
+
+	// 验证投票的签名
+	if !val.PubKey.VerifySignature(types.VoteSignBytes(cs.state.ChainID, vote), vote.Signature) {
+		return false, errors.New("vote signature error")
+	}
 
 	err := cs.VoteSet.AddVote(vote)
 	if err != nil {

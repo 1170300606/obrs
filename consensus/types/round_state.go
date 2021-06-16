@@ -3,7 +3,6 @@ package types
 import (
 	"chainbft_demo/types"
 	"fmt"
-	tmtype "github.com/tendermint/tendermint/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -88,11 +87,13 @@ type RoundState struct {
 	CurSlot    types.LTime
 	LastSlot   types.LTime
 	Step       RoundStepType
-	Validator  tmtype.PrivValidator // 验证者的信息 - 私钥，用来签名
-	Validators *tmtype.ValidatorSet // 目前共识中的所有的验证者集合
+	ValIndex   int32
+	Validator  types.PrivValidator // 验证者的信息 - 私钥，用来签名
+	Validators *types.ValidatorSet // 目前共识中的所有的验证者集合
 
-	Proposal *types.Proposal // 这一轮收到的合法提案
-	VoteSet  *SlotVoteSet    // slot=> voteSet的投票集合
+	Proposer *types.Validator // 这一轮的提案者
+	Proposal *types.Proposal  // 这一轮收到的合法提案
+	VoteSet  *SlotVoteSet     // slot=> voteSet的投票集合
 
 	LastCommit *types.Commit // 最后一个 committed区块的commit
 }

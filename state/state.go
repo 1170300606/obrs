@@ -3,7 +3,6 @@ package state
 import (
 	"bytes"
 	"chainbft_demo/types"
-	tmtype "github.com/tendermint/tendermint/types"
 	"time"
 )
 
@@ -11,19 +10,25 @@ func MakeGenesisState(
 	chainID string,
 	InitialSlot types.LTime,
 	genesisBlock *types.Block,
+	val *types.Validator,
+	vals *types.ValidatorSet,
 ) State {
-	state := NewState(chainID, InitialSlot)
+	state := NewState(chainID, InitialSlot, val, vals)
 	state.BlockTree = types.NewBlockTree(genesisBlock)
 	return state
 }
 
 func NewState(
 	chainID string,
-	InitialSlot types.LTime) State {
+	InitialSlot types.LTime,
+	val *types.Validator,
+	vals *types.ValidatorSet,
+) State {
 	return State{
 		ChainID:        chainID,
 		InitialSlot:    InitialSlot,
-		Validators:     tmtype.NewValidatorSet([]*tmtype.Validator{}),
+		PubVal:         val,
+		Validators:     vals,
 		UnCommitBlocks: types.NewBlockSet(),
 	}
 
@@ -35,8 +40,9 @@ func NewState(
 type State struct {
 	// 初始设定值 const value
 	ChainID     string
-	InitialSlot types.LTime // 初始Slot
-	Validators  *tmtype.ValidatorSet
+	InitialSlot types.LTime      // 初始Slot
+	PubVal      *types.Validator // 原始公钥，hardcode到genesis block中，用来验证quorum的签名
+	Validators  *types.ValidatorSet
 
 	// 最后提交的区块的信息
 	LastBlockSlot types.LTime
@@ -127,12 +133,21 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 
 // UpdateState 每次收到新的提案，不论提案的正确与否，都将block内的support quorum更新到对应的区块上
 func (state *State) UpdateState(block *types.Block) {
+	if state.PubVal == nil {
+		// public validator为空 没法更新
+		return
+	}
 	// 如果evidence quorum不为空，更新以往到区块的信息
 	if block.Evidences != nil {
 		for _, evidence := range block.Evidences {
-			// TODO 首先检验evidence的正确性 - 签名的正确性
-
 			blockhash := evidence.BlockHash
+
+			// 首先检验evidence的正确性 - 签名的正确性
+			if !state.PubVal.PubKey.VerifySignature(blockhash, evidence.Signature) {
+				// evidence验证错误 跳过
+				continue
+			}
+
 			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
 			if block == nil {
 				continue

@@ -33,3 +33,7 @@ func (t LTime) Greater(other LTime) bool {
 	}
 	return false
 }
+
+func (t LTime) Mod(val int) int {
+	return int(int64(t) % int64(val))
+}

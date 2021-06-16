@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"sync"
@@ -51,6 +52,18 @@ func (block *Block) ValidteBasic() error {
 	block.mtx.Lock()
 	defer block.mtx.Unlock()
 
+	if block.BlockState == ErrorBlock {
+		return errors.New("block state is error")
+	}
+
+	if block.BlockHash == nil || len(block.BlockHash) == 0 {
+		return errors.New("block had no blockhash")
+	}
+
+	if block.Signature == nil || len(block.Signature) == 0 {
+		return errors.New("block had no signature")
+	}
+
 	return nil
 }
 
@@ -82,7 +95,8 @@ type Header struct {
 	ValidatorsHash tmbytes.HexBytes `json:"validators_hash"` // 提交当前区块时，共识组内的所有验证者的hash
 	ResultHash     tmbytes.HexBytes `json:"result_hash"`     // 执行完transaction的结果hash TOREMOVE 这个值无法确定会导致hash发生变化，如果不参与hash的计算那么该值无任何意义
 
-	BlockHash tmbytes.HexBytes `json:block_hash` // 当前区块的hash
+	BlockHash tmbytes.HexBytes `json:"block_hash"` // 当前区块的hash
+	Signature tmbytes.HexBytes `json:"signature"`  // 区块的签名，sign {chainID}{slot}{LastBlockHash}{TxsHash}{ValidatorsHash}{ResultHash}
 }
 
 func (h *Header) Fill(

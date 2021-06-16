@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"time"
 )
@@ -42,5 +43,10 @@ func (v *Vote) Equal(other *Vote) bool {
 
 	// 同一个人在同一个slot即为同一个投票
 	return v.Slot.Equal(other.Slot) &&
-		v.ValidatorAddress.Equal(other.ValidatorAddress)
+		bytes.Equal(v.ValidatorAddress, other.ValidatorAddress)
+}
+
+// TODO 签名的内容
+func VoteSignBytes(chainID string, vote *Vote) []byte {
+	return vote.BlockHash
 }

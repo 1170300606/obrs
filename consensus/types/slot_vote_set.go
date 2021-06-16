@@ -1,6 +1,7 @@
 package types
 
 import (
+	multisig "chainbft_demo/crypto/threshold"
 	"chainbft_demo/types"
 	"errors"
 )
@@ -77,19 +78,32 @@ func (vs *voteSet) TryGenQuorum(threshold int) types.Quorum {
 			supportVotes = append(supportVotes, vote)
 		}
 	}
-	signature := []byte("")
+	var signature []byte
+
+	var majorityVotes []*types.Vote
 	quorumType := types.EmptyQuorum
-	// TODO 门限签名还原出原始签名
 
 	if len(supportVotes) >= threshold {
+		majorityVotes = supportVotes
 		// 有足够的赞成票
-		signature = []byte("support signature")
 		quorumType = types.SupportQuorum
 	} else if len(againstVotes) >= threshold {
-		signature = []byte("against signature")
+		majorityVotes = againstVotes
 		quorumType = types.AgainstQuorum
 	} else {
-		signature = nil
+		majorityVotes = nil
+		quorumType = types.EmptyQuorum
+	}
+
+	// 门限签名还原出原始签名
+	if majorityVotes != nil {
+		sigs, ids := getSignsAndIdsFromVotes(majorityVotes)
+		var err error
+		signature, err = multisig.SignatureRecovery(threshold, sigs, ids)
+		if err != nil {
+			quorumType = types.EmptyQuorum
+			signature = nil
+		}
 	}
 
 	return types.Quorum{
@@ -97,4 +111,16 @@ func (vs *voteSet) TryGenQuorum(threshold int) types.Quorum {
 		Type:      quorumType,
 		Signature: signature,
 	}
+}
+
+func getSignsAndIdsFromVotes(votes []*types.Vote) ([][]byte, []int64) {
+	sigs := make([][]byte, len(votes))
+	ids := make([]int64, len(votes))
+
+	for _, vote := range votes {
+		ids = append(ids, int64(vote.ValidatorIndex))
+		sigs = append(sigs, vote.Signature)
+	}
+
+	return sigs, ids
 }
