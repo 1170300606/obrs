@@ -93,8 +93,8 @@ func TestApplyBlock(t *testing.T) {
 	}, "apply block panic.")
 
 	// 检查blockSet有无更新
-	assert.Equal(t, 1, newState.PreCommitBlocks.Size())
-	assert.Equal(t, block, newState.PreCommitBlocks.Blocks()[0])
+	assert.Equal(t, 1, newState.UnCommitBlocks.Size())
+	assert.Equal(t, block, newState.UnCommitBlocks.Blocks()[0])
 
 	// 检查blocktree有无更新提案
 	queryBlock, err := newState.BlockTree.QueryBlockByHash(block.BlockHash)
