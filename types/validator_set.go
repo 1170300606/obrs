@@ -40,7 +40,7 @@ type ValidatorSet struct {
 // validation.
 func NewValidatorSet(valz []*Validator) *ValidatorSet {
 	vals := &ValidatorSet{}
-	vals.Validators = make([]*Validator, len(valz))
+	vals.Validators = make([]*Validator, 0, len(valz))
 
 	for _, val := range valz {
 		vals.Validators = append(vals.Validators, val)

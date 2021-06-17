@@ -6,5 +6,5 @@ type Proposal struct {
 }
 
 func ProposalSignBytes(chainID string, p *Proposal) []byte {
-	return p.BlockHash
+	return p.Block.Hash()
 }

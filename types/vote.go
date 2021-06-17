@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"time"
 )
@@ -48,5 +49,11 @@ func (v *Vote) Equal(other *Vote) bool {
 
 // TODO 签名的内容
 func VoteSignBytes(chainID string, vote *Vote) []byte {
-	return vote.BlockHash
+	return merkle.HashFromByteSlices([][]byte{
+		[]byte(chainID),
+		vote.Slot.Hash(),
+		[]byte(vote.Type.String()),
+		vote.ValidatorAddress,
+		vote.BlockHash,
+	})
 }

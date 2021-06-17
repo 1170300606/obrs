@@ -9,7 +9,7 @@ import (
 )
 
 // Volatile state for each Validator
-// NOTE: The ProposerPriority is not included in Validator.Hash();
+// NOTE: The ProposerPriority is not included in PrivVal.Hash();
 // make sure to update that method if changes are made here
 type Validator struct {
 	Address Address       `json:"address"`
@@ -55,9 +55,9 @@ func (v *Validator) Copy() *Validator {
 // 4. proposer priorityvalida
 func (v *Validator) String() string {
 	if v == nil {
-		return "nil-Validator"
+		return "nil-PrivVal"
 	}
-	return fmt.Sprintf("Validator{%v %v}",
+	return fmt.Sprintf("PrivVal{%v %v}",
 		v.Address,
 		v.PubKey)
 }

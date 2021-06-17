@@ -12,6 +12,7 @@ import (
 // that signs votes and proposals, and never double signs.
 type PrivValidator interface {
 	GetPubKey() (crypto.PubKey, error)
+	GetAddress() Address
 
 	SignVote(chainID string, vote *Vote) error
 	SignProposal(chainID string, proposal *Proposal) error
@@ -65,6 +66,11 @@ func NewMockPVWithParams(privKey crypto.PrivKey, breakProposalSigning, breakVote
 // Implements PrivValidator.
 func (pv MockPV) GetPubKey() (crypto.PubKey, error) {
 	return pv.PrivKey.PubKey(), nil
+}
+
+// Implements PrivValidator.
+func (pv MockPV) GetAddress() Address {
+	return pv.PrivKey.PubKey().Address()
 }
 
 // Implements PrivValidator.

@@ -92,6 +92,7 @@ type Header struct {
 	// 数据hash
 	LastBlockHash  tmbytes.HexBytes `json:last_block_hash`   // 上一个区块的信息
 	TxsHash        tmbytes.HexBytes `json:"txs_hash"`        // transactions
+	ValidatorAddr  Address          `json:"validator_addr"`  // 提案者地址
 	ValidatorsHash tmbytes.HexBytes `json:"validators_hash"` // 提交当前区块时，共识组内的所有验证者的hash
 	ResultHash     tmbytes.HexBytes `json:"result_hash"`     // 执行完transaction的结果hash TOREMOVE 这个值无法确定会导致hash发生变化，如果不参与hash的计算那么该值无任何意义
 
@@ -104,11 +105,13 @@ func (h *Header) Fill(
 	Slot LTime,
 	state BlockState,
 	LastBlockHash []byte,
+	valdatorAddr []byte,
 	validatorsHash []byte) {
 	h.ChainID = chainID
 	h.Slot = Slot
 	h.BlockState = state
 	h.LastBlockHash = LastBlockHash
+	h.ValidatorAddr = valdatorAddr
 	h.ValidatorsHash = validatorsHash
 }
 
