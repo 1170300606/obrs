@@ -10,10 +10,10 @@ func MakeGenesisState(
 	chainID string,
 	InitialSlot types.LTime,
 	genesisBlock *types.Block,
-	val *types.Validator,
+	val, pub_val *types.Validator,
 	vals *types.ValidatorSet,
 ) State {
-	state := NewState(chainID, InitialSlot, val, vals)
+	state := NewState(chainID, InitialSlot, val, pub_val, vals)
 	state.BlockTree = types.NewBlockTree(genesisBlock)
 	return state
 }
@@ -21,17 +21,17 @@ func MakeGenesisState(
 func NewState(
 	chainID string,
 	InitialSlot types.LTime,
-	val *types.Validator,
+	val, pub_val *types.Validator,
 	vals *types.ValidatorSet,
 ) State {
 	return State{
 		ChainID:        chainID,
 		InitialSlot:    InitialSlot,
-		PubVal:         val,
+		PubVal:         pub_val,
+		Validator:      val,
 		Validators:     vals,
 		UnCommitBlocks: types.NewBlockSet(),
 	}
-
 }
 
 // 有限确定状态机的一个状态节点
@@ -40,9 +40,11 @@ func NewState(
 type State struct {
 	// 初始设定值 const value
 	ChainID     string
-	InitialSlot types.LTime      // 初始Slot
-	PubVal      *types.Validator // 原始公钥，hardcode到genesis block中，用来验证quorum的签名
-	Validators  *types.ValidatorSet
+	InitialSlot types.LTime // 初始Slot
+
+	PubVal     *types.Validator // 原始公钥，hardcode到genesis block中，用来验证quorum的签名
+	Validator  *types.Validator // 节点自己的验证者信息
+	Validators *types.ValidatorSet
 
 	// 最后提交的区块的信息
 	LastBlockSlot types.LTime
@@ -70,6 +72,9 @@ func (state *State) Copy() State {
 		LastBlockTime:   state.LastBlockTime,
 		UnCommitBlocks:  state.UnCommitBlocks,
 		BlockTree:       state.BlockTree,
+		PubVal:          state.PubVal,
+		Validator:       state.Validator,
+		Validators:      state.Validators,
 		LastResultsHash: make([]byte, len(state.LastResultsHash)),
 	}
 

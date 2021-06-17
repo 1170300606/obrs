@@ -137,7 +137,8 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 	block.Fill(
 		state.ChainID, nextSlot,
 		types.ProposalBlock,
-		parentBlock.BlockHash, state.Validators.Hash(),
+		parentBlock.BlockHash,
+		state.Validator.Address, state.Validators.Hash(),
 	)
 
 	// step 4 生成evidence

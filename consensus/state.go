@@ -65,10 +65,11 @@ type ConsensusOption func(*ConsensusState)
 func NewDefaultConsensusState(
 	config *config.ConsensusConfig,
 	initSlot types.LTime,
+	privVal types.PrivValidator,
+	Validators *types.ValidatorSet,
 	blockExec state.BlockExecutor,
 	blockStore store.Store,
 	state state.State,
-	options ...ConsensusOption,
 ) *ConsensusState {
 	cs := NewConsensusState(
 		config,
@@ -76,7 +77,9 @@ func NewDefaultConsensusState(
 		blockExec,
 		blockStore,
 		state,
-		options...)
+		SetValidtorSet(Validators),
+		SetValidtor(privVal),
+	)
 	cs.decideProposal = cs.defaultProposal
 	cs.setProposal = cs.defaultSetProposal
 
@@ -136,8 +139,14 @@ func SetReactor(reactor *Reactor) ConsensusOption {
 
 func SetValidtor(validator types.PrivValidator) ConsensusOption {
 	return func(cs *ConsensusState) {
-		cs.Validator = validator
-		// TODO 设置validator index
+		// 设置validator index
+		if cs.Validators != nil {
+			pub, err := validator.GetPubKey()
+			if err == nil {
+				cs.ValIndex, _ = cs.Validators.GetByAddress(pub.Address())
+			}
+		}
+		cs.PrivVal = validator
 	}
 }
 
@@ -215,10 +224,6 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 	case *ProposalMessage:
 		// 收到新的提案
 		// TODO核验提案身份 - slot是否一致、提案人是否正确
-		//if !msg.Proposal.Slot.Equal(cs.CurSlot){
-		//	//
-		//	return
-		//}
 		if err := msg.Proposal.ValidteBasic(); err != nil {
 			cs.Logger.Error("receive wrong proposal.", "error", err)
 			return
@@ -227,7 +232,10 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		cs.Logger.Debug("receive proposal", "slot", cs.CurSlot, "proposal", msg.Proposal)
 		if cs.Proposal == nil || cs.Proposal.BlockState == types.DefaultBlock {
 			// 如果不为DefaultBlock 说明节点已经收到一个提案了 不再接受其他提案
-			cs.setProposal(msg.Proposal)
+			if err := cs.setProposal(msg.Proposal); err != nil {
+				cs.Logger.Error("set proposal failed.", "error", err)
+				return
+			}
 		}
 	case *VoteMessage:
 		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
@@ -240,6 +248,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		}
 		if added {
 			// 向reactor转发该消息
+			cs.Logger.Debug("add vote success. preprare to broadcast vote", "vote", msg.Vote)
 			cs.reactor.BroadcastVote(msg.Vote)
 		}
 	}
@@ -294,7 +303,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 
 	// 设置空提案 该提案不follow任何一个区块
 	cs.Proposal = types.MakeEmptyProposal()
-	cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.state.Validators.Hash())
+	cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.Proposer.Address, cs.state.Validators.Hash())
 
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
@@ -435,7 +444,10 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
 
 	// step 3 生成签名
-	cs.Validator.SignProposal(cs.state.ChainID, proposal)
+	if err := cs.PrivVal.SignProposal(cs.state.ChainID, proposal); err != nil {
+		cs.Logger.Error("sign proposal failed", "err", err)
+		return nil
+	}
 
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
@@ -458,14 +470,16 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 		}
 	}()
 
+	cs.Logger.Debug("ready to set proposal", "proposal", proposal)
+
 	// 再次验证proposal - 签名、颁发者是否正确
 	// 验证提案的slot是否和当前的slot相等
-	if proposal.Slot.Equal(cs.CurSlot) {
+	if !proposal.Slot.Equal(cs.CurSlot) {
 		return errors.New(fmt.Sprintf("proposal slot is not same, proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
 	}
 
 	// 验证提案人是否正确
-	_, val := cs.Validators.GetByAddress(proposal.ValidatorsHash)
+	_, val := cs.Validators.GetByAddress(proposal.ValidatorAddr)
 	if !cs.isProposer(val) {
 		return errors.New(fmt.Sprintf("%v is not this slot leader, expected: %v", val.String(), cs.Proposer.String()))
 	}
@@ -493,19 +507,19 @@ func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
 		votetype = types.AgainstVote
 	}
 
-	validatorPubKey, err := cs.Validator.GetPubKey()
-
-	if err != nil {
-		return
-	}
 	vote := &types.Vote{
 		Slot:             cs.CurSlot,
 		BlockHash:        proposal.Hash(),
 		Type:             votetype,
 		Timestamp:        time.Now(),
-		ValidatorAddress: types.GetAddress(validatorPubKey),
-		ValidatorIndex:   -1,
+		ValidatorAddress: cs.state.Validator.Address,
+		ValidatorIndex:   cs.ValIndex,
 		Signature:        []byte("signature"),
+	}
+
+	if err := cs.PrivVal.SignVote(cs.state.ChainID, vote); err != nil {
+		cs.Logger.Error("sign vote failed.", "error", err)
+		return
 	}
 
 	cs.Logger.Debug("proposal vote", "vote", vote)

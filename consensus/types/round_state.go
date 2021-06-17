@@ -88,7 +88,7 @@ type RoundState struct {
 	LastSlot   types.LTime
 	Step       RoundStepType
 	ValIndex   int32
-	Validator  types.PrivValidator // 验证者的信息 - 私钥，用来签名
+	PrivVal    types.PrivValidator // 验证者的信息 - 私钥，用来签名
 	Validators *types.ValidatorSet // 目前共识中的所有的验证者集合
 
 	Proposer *types.Validator // 这一轮的提案者

@@ -40,6 +40,15 @@ func (slotvs *SlotVoteSet) GetVotesBySlot(slot types.LTime) *voteSet {
 	return vs
 }
 
+// Size 返回slot对应的voteset的投票总数
+func (slotvs *SlotVoteSet) Size(slot types.LTime) int {
+	vs, exist := slotvs.slotVoteSet[slot]
+	if !exist {
+		return 0
+	}
+	return len(vs.votes)
+}
+
 func NewVoteSet(hash []byte) *voteSet {
 	return &voteSet{
 		blockHash: hash,
@@ -114,11 +123,11 @@ func (vs *voteSet) TryGenQuorum(threshold int) types.Quorum {
 }
 
 func getSignsAndIdsFromVotes(votes []*types.Vote) ([][]byte, []int64) {
-	sigs := make([][]byte, len(votes))
-	ids := make([]int64, len(votes))
+	sigs := make([][]byte, 0, len(votes))
+	ids := make([]int64, 0, len(votes))
 
 	for _, vote := range votes {
-		ids = append(ids, int64(vote.ValidatorIndex))
+		ids = append(ids, int64(vote.ValidatorIndex+1))
 		sigs = append(sigs, vote.Signature)
 	}
 
