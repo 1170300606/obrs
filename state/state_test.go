@@ -10,7 +10,7 @@ import (
 func TestNewBranch(t *testing.T) {
 	chainID := "state_test"
 	genBlock := types.MakeGenesisBlock(chainID, []byte("signature"))
-	genState := MakeGenesisState(chainID, types.LtimeZero, genBlock)
+	genState := MakeGenesisState(chainID, types.LtimeZero, genBlock, nil, nil, nil)
 
 	treeCase := []struct {
 		slot       int64
@@ -38,7 +38,7 @@ func TestNewBranch(t *testing.T) {
 			types.LTime(node.slot),
 			node.blockState,
 			blocks[node.previdx].Hash(),
-			[]byte(""))
+			[]byte(""), []byte(""))
 		blocks[node.slot] = b
 		b.Hash()
 		assert.NotNil(t, b.LastBlockHash)

@@ -32,7 +32,7 @@ func newBlockExecutorWithConfig(config *config.Config) (BlockExecutor, cleanup) 
 
 func generateGenesis(chainID string) (*types.Block, State) {
 	genblock := types.MakeGenesisBlock("state_test", []byte("signature"))
-	genstate := MakeGenesisState("state_test", types.LtimeZero, genblock)
+	genstate := MakeGenesisState("state_test", types.LtimeZero, genblock, nil, nil, nil)
 
 	return genblock, genstate
 }
@@ -81,7 +81,7 @@ func TestApplyBlock(t *testing.T) {
 
 	}
 	block := types.MakeBlock(txs)
-	block.Fill("state_test", types.LTime(1), types.PrecommitBlock, genblock.BlockHash, genstate.Validators.Hash())
+	block.Fill("state_test", types.LTime(1), types.PrecommitBlock, genblock.BlockHash, genstate.Validators.Hash(), nil)
 
 	blockExec, cleanup := newBLockExecutor()
 	defer cleanup()
