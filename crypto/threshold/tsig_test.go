@@ -27,11 +27,11 @@ func TestSignatureRecovery(t *testing.T) {
 
 	origin_sig, _ := private.Sign(msg)
 
-	priv := bn256_suite.G2().Scalar().One()
-	err = priv.UnmarshalBinary(private)
-	assert.Nil(t, err)
+	//priv := bn256_suite.G2().Scalar().One()
+	//err = priv.UnmarshalBinary(private)
+	//assert.Nil(t, err)
 
-	polynome := Master(priv, d, testseeds)
+	polynome := Master(private, d, testseeds)
 
 	t.Log("share private: ", private)
 	t.Log("polynome: ", polynome)
@@ -50,13 +50,15 @@ func TestSignatureRecovery(t *testing.T) {
 	sigs := [][]byte{}
 	for _, id := range ids {
 		x_i, err := polynome.GetValue(id)
-		ss, _ := x_i.MarshalBinary()
+		ss := x_i.Bytes()
 		t.Log(id, len(ss), x_i)
 		assert.Nil(t, err, "计算f(x)函数值出错。err：", err)
-		if sig, err := kbls.Sign(suite, x_i, msg); err != nil {
+		x_i_kyber, err := x_i.ToKyber()
+		assert.NoError(t, err)
+		if sig, err := kbls.Sign(suite, x_i_kyber, msg); err != nil {
 			t.Error(err)
 		} else {
-			assert.Nil(t, kbls.Verify(suite, suite.G2().Point().Mul(x_i, nil), msg, sig))
+			assert.Nil(t, kbls.Verify(suite, suite.G2().Point().Mul(x_i_kyber, nil), msg, sig))
 			sigs = append(sigs, sig)
 		}
 	}
@@ -83,7 +85,7 @@ func TestMaster(t *testing.T) {
 		priv := bn256_suite.G2().Scalar().One()
 		err := priv.UnmarshalBinary(private)
 		assert.Nil(t, err)
-		polynome := Master(priv, d, testseeds)
+		polynome := Master(private, d, testseeds)
 
 		t.Log(polynome)
 	}

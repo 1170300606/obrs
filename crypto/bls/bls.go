@@ -5,14 +5,12 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"go.dedis.ch/kyber/v3"
 	"go.dedis.ch/kyber/v3/pairing/bn256"
 	"go.dedis.ch/kyber/v3/sign/bls"
 	"go.dedis.ch/kyber/v3/util/random"
-	"io"
-	"strconv"
-	"syscall"
-
 	"golang.org/x/exp/rand"
+	"io"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -102,6 +100,16 @@ func (privKey PrivKey) Type() string {
 	return KeyType
 }
 
+// ToKyber 将私钥转换为kyber的私钥类型
+func (privKey PrivKey) ToKyber() (kyber.Scalar, error) {
+	x := bn256_suite.G2().Scalar().One()
+	err := x.UnmarshalBinary(privKey)
+	if err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
 // GenPrivKey generates a new BLS private key.
 // It uses OS randomness in conjunction with the current global random seed
 // in tendermint/libs/common to generate the private key.
@@ -111,16 +119,22 @@ func GenPrivKey() PrivKey {
 
 // genPrivKey generates a new ed25519 private key using the provided reader.
 func genPrivKey(rander io.Reader) PrivKey {
-	v, _ := syscall.Getenv("TASKID")
-	Shard, _ := strconv.Atoi(v)
-	var id int64
-	id = int64(Shard * 500)
-	tmp := rand.New(rand.NewSource(uint64(id)))
-	cipher1 := random.New(tmp)
+	cipher1 := random.New(rander)
 
 	priv, _ := bls.NewKeyPair(bn256_suite, cipher1)
 	data, _ := priv.MarshalBinary()
 	return PrivKey(data)
+}
+
+func GenTestPrivKey(seed uint64) PrivKey {
+	rander := rand.New(rand.NewSource(seed))
+	return genPrivKey(rander)
+}
+
+// Kyber2PrivKey kyber类型转换为内部私钥类型
+func Kyber2PrivKey(x kyber.Scalar) PrivKey {
+	bytesPriv, _ := x.MarshalBinary()
+	return PrivKey(bytesPriv)
 }
 
 //-------------------------------------

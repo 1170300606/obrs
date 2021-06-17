@@ -1,6 +1,7 @@
 package threshold
 
 import (
+	bft_bls "chainbft_demo/crypto/bls"
 	"errors"
 	"fmt"
 	"go.dedis.ch/kyber/v3"
@@ -31,7 +32,12 @@ type Polynome struct {
 // test case: f(x) = 2 + x + 3x^2 + x^3
 // 传入一个公共私钥，返回一个指定阶数的多项式(d+1)
 // 第1项为传入值x，其余各项均为随机数
-func Master(x kyber.Scalar, d int, seed int64) *Polynome {
+func Master(priv bft_bls.PrivKey, d int, seed int64) *Polynome {
+	// 首先将bft_bls.PrivKey类型的私钥转换为kyber.Scalar
+	x, err := priv.ToKyber()
+	if err != nil {
+		return nil
+	}
 	p := make([]kyber.Scalar, d+1, d+1)
 	p[0] = x
 
@@ -48,11 +54,12 @@ func Master(x kyber.Scalar, d int, seed int64) *Polynome {
 }
 
 // 计算p(idx)的值
-func (p Polynome) GetValue(idx int64) (kyber.Scalar, error) {
+// NOTE idx不能为0
+func (p Polynome) GetValue(idx int64) (bft_bls.PrivKey, error) {
 	return p.getValue(bn256_suite, idx)
 }
 
-func (p *Polynome) getValue(suite *bn256.Suite, idx int64) (kyber.Scalar, error) {
+func (p *Polynome) getValue(suite *bn256.Suite, idx int64) (bft_bls.PrivKey, error) {
 	if p == nil {
 		return nil, errors.New("init Polynome first")
 	}
@@ -72,7 +79,7 @@ func (p *Polynome) getValue(suite *bn256.Suite, idx int64) (kyber.Scalar, error)
 		res = res.Add(res, tmp)         // res += a_i * x_i ^ i
 	}
 
-	return res, nil
+	return bft_bls.Kyber2PrivKey(res), nil
 }
 
 // 利用拉格朗日插值法，从n个子签名中还原出一个唯一的签名
