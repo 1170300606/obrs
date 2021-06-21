@@ -47,7 +47,7 @@ func (v *Vote) Equal(other *Vote) bool {
 		bytes.Equal(v.ValidatorAddress, other.ValidatorAddress)
 }
 
-// TODO 签名的内容
+// 签名的内容
 func VoteSignBytes(chainID string, vote *Vote) []byte {
 	return merkle.HashFromByteSlices([][]byte{
 		[]byte(chainID),

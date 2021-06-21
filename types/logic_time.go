@@ -28,7 +28,7 @@ func (t LTime) Equal(other LTime) bool {
 func (t LTime) Greater(other LTime) bool {
 	curT := int64(t)
 	otherT := int64(other)
-	if curT > otherT {
+	if curT >= otherT {
 		return true
 	}
 	return false

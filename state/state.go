@@ -147,16 +147,16 @@ func (state *State) UpdateState(block *types.Block) {
 		for _, evidence := range block.Evidences {
 			blockhash := evidence.BlockHash
 
-			// 首先检验evidence的正确性 - 签名的正确性
-			if !state.PubVal.PubKey.VerifySignature(blockhash, evidence.Signature) {
-				// evidence验证错误 跳过
-				continue
-			}
-
 			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
 			if block == nil {
 				continue
 			}
+
+			// TODO 首先检验evidence的正确性 - 签名的正确性
+			//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
+			//	// evidence验证错误 跳过
+			//	continue
+			//}
 
 			if block.Commit == nil {
 				block.Commit = &types.Commit{}

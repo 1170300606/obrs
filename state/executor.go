@@ -143,8 +143,8 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 
 	// step 4 生成evidence
 	block.Evidences = []types.Quorum{}
-	for _, block := range precommitBlocks {
-		block.Evidences = append(block.Evidences, block.VoteQuorum.Copy())
+	for _, pblock := range precommitBlocks {
+		block.Evidences = append(block.Evidences, pblock.VoteQuorum.Copy())
 	}
 
 	return &types.Proposal{

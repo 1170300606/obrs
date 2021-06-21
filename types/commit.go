@@ -30,7 +30,7 @@ func (c *Commit) IsReady() bool {
 	}
 
 	// 尝试检查自己是否有support-quorum和提供证据的区块处于pre-commit的block
-	if root.LocalQuorum != nil && root.Witness != nil {
+	if root.LocalQuorum == nil && root.Witness == nil {
 		return false
 	}
 
@@ -41,7 +41,7 @@ func (c *Commit) IsReady() bool {
 
 	// 见证者已经提交或者处于precommit状态
 	if root.Witness.BlockState == PrecommitBlock || root.Witness.BlockState == CommiitedBlock {
-		return false
+		return true
 	}
-	return true
+	return false
 }

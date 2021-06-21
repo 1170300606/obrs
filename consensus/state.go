@@ -324,6 +324,17 @@ func (cs *ConsensusState) enterApply() {
 		cs.updateStep(cstype.RoundStepApply)
 	}()
 
+	// 必须处于RoundStepSlot才可以Apply
+	if cs.Step != cstype.RoundStepSlot {
+		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
+	}
+
+	if !cs.hasProposal() {
+		// 如果节点在这一轮slot没有收到提案，提前结束apply阶段
+		cs.Logger.Debug("proposal is default proposal, skip apply step")
+		return
+	}
+
 	// TODO 该如何检查slot
 	// 必须处于RoundStepSlot才可以Apply
 	if cs.Step != cstype.RoundStepSlot {
@@ -383,6 +394,14 @@ func (cs *ConsensusState) enterApply() {
 	cs.state = newState
 }
 
+// hasProposal 判断是否在这一轮slot有收到合适的提案
+func (cs *ConsensusState) hasProposal() bool {
+	if cs.Proposal != nil && cs.Proposal.BlockState != types.DefaultBlock {
+		return true
+	}
+	return false
+}
+
 // enterPropose 如果节点是该轮slot的leader，则在这里提出提案并推送给reactor广播
 // RoundEventPropose事件触发
 // 不用触发任何事件，等待超时事件即可
@@ -393,7 +412,10 @@ func (cs *ConsensusState) enterPropose() {
 		// 比较特殊，提案结束后进入RoundStepWait 等待接收消息
 		cs.updateStep(cstype.RoundStepWait)
 	}()
-
+	// 必须处于RoundStepSlot才可以Apply
+	if cs.Step != cstype.RoundStepApply {
+		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
+	}
 	// TODO 该如何检查slot
 	// 必须处于RoundStepSlot才可以Apply
 	if cs.Step != cstype.RoundStepApply {
