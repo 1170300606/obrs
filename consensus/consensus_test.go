@@ -355,3 +355,95 @@ func TestTryAddVote(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	assert.Equalf(t, 4, cs.VoteSet.Size(cs.CurSlot), "should receive 4 votes, but got %v", cs.VoteSet.Size(cs.CurSlot))
 }
+
+// TestApplyPrecommitBlock 测试，提交一个收到足够投票的提案
+func TestApplyPrecommitBlock(t *testing.T) {
+	privs, vals, pub_val := newPrivAndValSet(4)
+	_, val := vals.GetByIndex(0)
+	cs, clean := newConsensusState(privs[0], val, pub_val, vals)
+
+	defer clean()
+	cs.OnStart()
+
+	// 手动进入proposal step，验证是否可以运行和正确打包
+	cs.updateStep(cstypes.RoundStepApply)
+
+	var proposal *types.Proposal
+
+	assert.NotPanics(t, func() {
+		proposal = cs.defaultProposal()
+	}, "propose failed.")
+
+	// proposal的第一轮投票，应该全部添加成功
+	for i := 1; i < len(privs); i++ {
+		priv := privs[i]
+		addr, _ := vals.GetByIndex(int32(i))
+		vote := &types.Vote{
+			Slot:             0,
+			BlockHash:        proposal.Hash(),
+			Type:             types.SupportVote,
+			Timestamp:        time.Now(),
+			ValidatorAddress: addr,
+			ValidatorIndex:   int32(i),
+			Signature:        nil,
+		}
+
+		err := priv.SignVote(cs.state.ChainID, vote)
+		assert.NoError(t, err, "sign vote failed.", "index", i, "error", err)
+		cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, p2p.ID(fmt.Sprintf("%v", i))} // 模拟收到vote
+	}
+
+	// 给足够的时间处理投票
+	time.Sleep(1 * time.Second)
+
+	cs.updateStep(cstypes.RoundStepSlot)
+	cs.enterApply()
+
+	assert.Equal(t, 1, cs.state.UnCommitBlocks.Size(), "提案应该")
+	newBlock := cs.state.BlockTree.GetLatestBlock()
+	assert.Equal(t, proposal.Hash(), newBlock.Hash(), "提案应该为新的扩展分支")
+
+	// 模拟生成第二个区块，evidence应该不为空
+	proposal2 := cs.blockExec.CreateProposal(cs.state, types.LTime(1))
+	addr2, _ := vals.GetByIndex(1)
+	proposal2.ValidatorAddr = addr2
+	assert.NoError(t, privs[1].SignProposal(cs.state.ChainID, proposal2), "生成proposal2的签名有问题")
+
+	assert.Equal(t, 1, len(proposal2.Evidences), "proposal2应该包含proposal的support-quorum")
+
+	// 测试提交第二个proposal 然后第一个proposal应该可以提交
+	cs.updateSlot(types.LTime(1)) // 模拟更新slot
+	cs.decideProposer()
+	cs.setProposal(proposal2)
+
+	assert.NotEqual(t, proposal2, proposal)
+
+	// proposal的第一轮投票，应该全部添加成功
+	for i := 0; i < len(privs); i++ {
+		priv := privs[i]
+		addr, _ := vals.GetByIndex(int32(i))
+		vote := &types.Vote{
+			Slot:             1,
+			BlockHash:        proposal2.Hash(),
+			Type:             types.SupportVote,
+			Timestamp:        time.Now(),
+			ValidatorAddress: addr,
+			ValidatorIndex:   int32(i),
+			Signature:        nil,
+		}
+
+		err := priv.SignVote(cs.state.ChainID, vote)
+		assert.NoError(t, err, "sign vote failed.", "index", i, "error", err)
+		cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, p2p.ID(fmt.Sprintf("%v", i))} // 模拟收到vote
+	}
+
+	// 给足够的时间处理投票
+	time.Sleep(1 * time.Second)
+
+	cs.updateStep(cstypes.RoundStepSlot)
+	cs.enterApply()
+
+	assert.Equal(t, 1, cs.state.UnCommitBlocks.Size(), "proposal应该提交")
+	newBlock = cs.state.BlockTree.GetLatestBlock()
+	assert.Equal(t, proposal2.Hash(), newBlock.Hash(), "提案应该为新的扩展分支")
+}
