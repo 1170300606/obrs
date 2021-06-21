@@ -4,6 +4,8 @@ import (
 	"chainbft_demo/types"
 	"fmt"
 	"github.com/tendermint/tendermint/libs/cmap"
+	"github.com/tendermint/tendermint/libs/events"
+	tmjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
 	"math/rand"
@@ -13,7 +15,7 @@ import (
 const (
 	TestChannel        = byte(0x30)
 	StateChannel       = byte(0x20)
-	DataChannel        = byte(0x21)
+	ProposalChannel    = byte(0x21)
 	VoteChannel        = byte(0x22)
 	VoteSetBitsChannel = byte(0x23)
 
@@ -26,6 +28,13 @@ const (
 func init() {
 	rand.Seed(time.Now().Unix())
 }
+
+// ------ Event ------
+// reactor监听的consensus广播事件
+const (
+	EventNewProposal = "NewProposal"
+	EventNewVote     = "NewVote"
+)
 
 // ------ Message ------
 type Message interface {
@@ -122,35 +131,79 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	if !conR.IsRunning() {
 		conR.Logger.Debug("Receive", "src", src, "chID", chID, "bytes", msgBytes)
 	}
-
-	msg, err := decode(msgBytes)
-	if err != nil {
-		conR.Logger.Error("Peer Send us invalid msg", "src", src, "msg", msg, "err", err)
-		return
-	}
+	// 各自解析数据
 	switch chID {
-	case TestChannel:
-		conR.Logger.Info(fmt.Sprintf("Receive msg from %s, msg=%s", src.ID(), msg))
-		if conR.forward.Has(msg) {
-			// non-gossip
+	case VoteChannel:
+		// 收到新的投票
+		var vote types.Vote
+
+		if err := tmjson.Unmarshal(msgBytes, &vote); err != nil {
+			conR.consensus.Logger.Error("try to unmarshal vote failed", "err", err, "msgBytes", msgBytes)
 			break
 		}
-		conR.Switch.Broadcast(TestChannel, msgBytes)
-		conR.forward.Set(msg, struct{}{})
+
+		conR.Logger.Debug(fmt.Sprintf("Receive vote from #{%v}", src.ID()), "vote", vote)
+		conR.consensus.peerMsgQueue <- msgInfo{
+			Msg:    &VoteMessage{Vote: &vote},
+			PeerID: src.ID(),
+		}
+
+	case ProposalChannel:
+		var proposal types.Proposal
+
+		if err := tmjson.Unmarshal(msgBytes, &proposal); err != nil {
+			conR.consensus.Logger.Error("try to unmarshal proposal failed", "err", err, "msgBytes", msgBytes)
+			break
+		}
+
+		conR.Logger.Debug(fmt.Sprintf("Receive proposal from #{%v}", src.ID()), "proposal", proposal)
+		conR.consensus.peerMsgQueue <- msgInfo{
+			Msg:    &ProposalMessage{Proposal: &proposal},
+			PeerID: src.ID(),
+		}
 
 	default:
 		conR.Logger.Error(fmt.Sprintf("Unknown chID %X", chID))
 	}
 }
 
-// TODO BroadcastProposal 向其他人广播提案
-func (conR *Reactor) BroadcastProposal(proposal *types.Proposal) {
+// subscribeToBroadcastEvents订阅consensus需要广播的消息
+func (conR *Reactor) subscribeToBroadcastEvents() {
+	const scriber = "consensus-reactor"
 
+	// 监听提案广播事件 - 当consensus成功setProposal以后才会触发事件
+	conR.consensus.eventSwitch.AddListenerForEvent(scriber, EventNewProposal, func(data events.EventData) {
+		// consensus已经验证过提案的合法性，这里只要简单的广播即可
+		// 退一步即使是恶意提案，接收者还需要判断
+		conR.broadcastProposal(data.(*types.Proposal))
+	})
+
+	// 监听提案投票事件 - 当consensus成功addVote以后才会触发事件
+	conR.consensus.eventSwitch.AddListenerForEvent(scriber, EventNewProposal, func(data events.EventData) {
+		// consensus已经验证过提案的合法性，这里只要简单的广播即可
+		// 退一步即使是恶意提案，接收者还需要判断
+		conR.broadcastVote(data.(*types.Vote))
+	})
 }
 
-// TODO BroadcastVote 向其他节点广播投票
-func (conR *Reactor) BroadcastVote(vote *types.Vote) {
-	conR.Logger.Debug("reactor recieve vote from consensus", "vote", vote)
+func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
+	pBytes, err := tmjson.Marshal(proposal)
+	if err != nil {
+		conR.Logger.Error("Marshal Proposal failed.", "err", err)
+		conR.Logger.Debug("Marshal Proposal failed.", "proposal", proposal)
+	}
+	conR.Logger.Debug("ready to broadcast Proposal ", "proposal", proposal)
+	conR.Switch.Broadcast(ProposalChannel, pBytes)
+}
+
+func (conR *Reactor) broadcastVote(vote *types.Vote) {
+	vBytes, err := tmjson.Marshal(vote)
+	if err != nil {
+		conR.Logger.Error("Marshal Vote failed.", "err", err)
+		conR.Logger.Debug("Marshal Vote failed.", "vote", vote)
+	}
+	conR.Logger.Debug("ready to broadcast Vote", "vote", vote)
+	conR.Switch.Broadcast(VoteChannel, vBytes)
 }
 
 // --------------------------

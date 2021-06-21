@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/events"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
@@ -50,10 +51,10 @@ type ConsensusState struct {
 	lastState state.State // 倒数第二个区块提交的系统状态
 
 	// 通信管道
-	peerMsgQueue     chan msgInfo // 处理来自其他节点的消息（包含区块、投票）
-	internalMsgQueue chan msgInfo // 内部消息流通的chan，主要是内部的投票、提案
-	eventMsgQueue    chan msgInfo // 内部消息流通的chan，主要是状态机的状态切换的事件chan
-	reactor          *Reactor     // 用来往其他交易广播消息的接口，在这里是否引入事件模型 - 来简化通信的复杂
+	peerMsgQueue     chan msgInfo       // 处理来自其他节点的消息（包含区块、投票）
+	internalMsgQueue chan msgInfo       // 内部消息流通的chan，主要是内部的投票、提案
+	eventMsgQueue    chan msgInfo       // 内部消息流通的chan，主要是状态机的状态切换的事件chan
+	eventSwitch      events.EventSwitch // consensus和reactor之间通信的组件 - 事件模型
 
 	// 方便测试重写逻辑
 	decideProposal func() *types.Proposal               // 生成提案的函数
@@ -110,6 +111,7 @@ func NewConsensusState(
 		peerMsgQueue:     make(chan msgInfo),
 		internalMsgQueue: make(chan msgInfo),
 		eventMsgQueue:    make(chan msgInfo),
+		eventSwitch:      events.NewEventSwitch(),
 	}
 
 	cs.BaseService = *service.NewBaseService(nil, "CONSENSUS", cs)
@@ -128,12 +130,6 @@ func (cs *ConsensusState) SetLogger(logger log.Logger) {
 	}
 	if cs.blockExec != nil {
 		cs.blockExec.SetLogger(logger)
-	}
-}
-
-func SetReactor(reactor *Reactor) ConsensusOption {
-	return func(cs *ConsensusState) {
-		cs.reactor = reactor
 	}
 }
 
@@ -249,7 +245,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		if added {
 			// 向reactor转发该消息
 			cs.Logger.Debug("add vote success. preprare to broadcast vote", "vote", msg.Vote)
-			cs.reactor.BroadcastVote(msg.Vote)
+			cs.eventSwitch.FireEvent(EventNewVote, msg.Vote)
 		}
 	}
 
@@ -516,8 +512,8 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 
 	cs.Proposal = proposal
 
-	// 接受提案 然后转发
-	cs.reactor.BroadcastProposal(proposal)
+	// 接受提案 然后触发事件通知reactor转发
+	cs.eventSwitch.FireEvent(EventNewProposal, proposal)
 
 	return nil
 }
