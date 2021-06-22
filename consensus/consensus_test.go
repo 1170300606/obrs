@@ -37,11 +37,10 @@ func newConsensusState(
 ) (*ConsensusState, cleanup) {
 	logger := log.NewFilter(log.TestingLogger(), log.AllowDebug())
 
-	conR := NewReactor()
+	cs, clean := newConsensusStateWithConfig(config.ResetTestRoot("consensus_test"), logger, prival, val, pub_val, vals, memplfunc...)
+	conR := NewReactor(cs)
 	conR.SetLogger(logger)
 
-	cs, clean := newConsensusStateWithConfig(config.ResetTestRoot("consensus_test"), logger, prival, val, pub_val, vals, memplfunc...)
-	SetReactor(conR)(cs)
 	return cs, clean
 }
 
