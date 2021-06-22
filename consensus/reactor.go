@@ -13,13 +13,12 @@ import (
 )
 
 const (
-	TestChannel        = byte(0x30)
 	StateChannel       = byte(0x20)
 	ProposalChannel    = byte(0x21)
 	VoteChannel        = byte(0x22)
 	VoteSetBitsChannel = byte(0x23)
 
-	maxMsgSize = 1048576 // 1MB; NOTE/TODO: keep in sync with types.PartSet sizes.
+	maxMsgSize = 10485760 // 10MB; NOTE/TODO: keep in sync with types.PartSet sizes.
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
@@ -51,26 +50,16 @@ type Reactor struct {
 
 	quit chan struct{}
 
-	seed int64
-	id   p2p.ID
-
-	forward *cmap.CMap
-
 	consensus *ConsensusState
-}
-
-func (conR *Reactor) SetId(id p2p.ID) {
-	conR.id = id
 }
 
 type ReactorOption func(*Reactor)
 
-func NewReactor(options ...ReactorOption) *Reactor {
+func NewReactor(conS *ConsensusState, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
-		quit:    make(chan struct{}, 1),
-		peers:   cmap.NewCMap(),
-		seed:    rand.Int63(),
-		forward: cmap.NewCMap(),
+		quit:      make(chan struct{}, 1),
+		peers:     cmap.NewCMap(),
+		consensus: conS,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
 
@@ -84,16 +73,9 @@ func NewReactor(options ...ReactorOption) *Reactor {
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Consensus Reactor started.")
 	go func() {
-	LOOP:
-		for {
-			select {
-			case <-conR.quit:
-				break LOOP
-				conR.Logger.Info(fmt.Sprintf("%s=%v", conR.id, conR.seed))
-
-			}
-		}
 	}()
+	conR.subscribeToBroadcastEvents()
+	conR.consensus.OnStart()
 	return nil
 }
 
@@ -104,7 +86,13 @@ func (conR *Reactor) OnStop() {
 func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
-			ID:                 TestChannel,
+			ID:                 ProposalChannel,
+			Priority:           10,
+			SendQueueCapacity:  100,
+			RecvBufferCapacity: maxMsgSize,
+		},
+		{
+			ID:                 VoteChannel,
 			Priority:           10,
 			SendQueueCapacity:  100,
 			RecvBufferCapacity: maxMsgSize,
@@ -118,8 +106,6 @@ func (conR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 }
 
 func (conR *Reactor) AddPeer(peer p2p.Peer) {
-	conR.Logger.Info("addpeer res", peer.Send(TestChannel, []byte("consensus")))
-
 	conR.peers.Set(p2p.IDAddressString(peer.ID(), ""), peer)
 }
 
@@ -179,7 +165,7 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 	})
 
 	// 监听提案投票事件 - 当consensus成功addVote以后才会触发事件
-	conR.consensus.eventSwitch.AddListenerForEvent(scriber, EventNewProposal, func(data events.EventData) {
+	conR.consensus.eventSwitch.AddListenerForEvent(scriber, EventNewVote, func(data events.EventData) {
 		// consensus已经验证过提案的合法性，这里只要简单的广播即可
 		// 退一步即使是恶意提案，接收者还需要判断
 		conR.broadcastVote(data.(*types.Vote))
@@ -187,6 +173,8 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
+	conR.Logger.Debug("prepare to send proposal")
+
 	pBytes, err := tmjson.Marshal(proposal)
 	if err != nil {
 		conR.Logger.Error("Marshal Proposal failed.", "err", err)
@@ -197,6 +185,7 @@ func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
 }
 
 func (conR *Reactor) broadcastVote(vote *types.Vote) {
+	conR.Logger.Debug("prepare to send vote")
 	vBytes, err := tmjson.Marshal(vote)
 	if err != nil {
 		conR.Logger.Error("Marshal Vote failed.", "err", err)

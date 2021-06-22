@@ -599,7 +599,10 @@ func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 		// NOTE: using the go-routine means our votes can
 		// be processed out of order.
 		cs.Logger.Debug("internal msg queue is full; using a go-routine")
-		go func() { cs.internalMsgQueue <- mi }()
+		go func() {
+			cs.internalMsgQueue <- mi
+			cs.Logger.Debug("msgQueue-sending go-routine finished")
+		}()
 	}
 }
 
