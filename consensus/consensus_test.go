@@ -51,7 +51,7 @@ func newConsensusStateWithConfig(
 	memplfunc ...memplFunc,
 ) (*ConsensusState, cleanup) {
 	chainID := "CONSENSUS_TEST"
-	geneBlock := types.MakeGenesisBlock(chainID, []byte("signature"))
+	geneBlock := types.MakeGenesisBlock(chainID)
 
 	state := bkstate.MakeGenesisState(chainID, types.LtimeZero, geneBlock, val, pub_val, vals)
 
@@ -75,7 +75,7 @@ func newConsensusStateWithConfig(
 // 生成指定数量的validator，
 // 返回相等数量的私钥、验证者集合、公共公钥
 func newPrivAndValSet(count int) ([]types.PrivValidator, *types.ValidatorSet, *types.Validator) {
-	pub_priv := bls.GenTestPrivKey(uint64(100))
+	pub_priv := bls.GenTestPrivKey(int64(100))
 	pub_val := types.NewValidator(pub_priv.PubKey())
 	poly := threshold2.Master(pub_priv, 3, 1000)
 

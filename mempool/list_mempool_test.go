@@ -20,7 +20,7 @@ func newMempool() (*ListMempool, cleanupFunc) {
 }
 
 func newMempoolWithConfig(config *cfg.Config) (*ListMempool, cleanupFunc) {
-	mempool := NewListMempool(config.Mempool, 0)
+	mempool := NewListMempool(config.Mempool)
 	mempool.SetLogger(log.TestingLogger())
 	return mempool, func() { os.RemoveAll(config.RootDir) }
 }
