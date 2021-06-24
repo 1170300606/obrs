@@ -44,7 +44,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	validator := types.NewValidator(pubKey)
 
 	// 从文件中加载genesis block
-	genState, err := loadStateFromFile(config.PrivValidatorStateFile())
+	genState, err := loadStateFromFile(config.GenesisFile())
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func loadStateFromFile(stateFile string) (state.State, error) {
 		return state.State{}, err
 	}
 
-	genblock := types.MakeGenesisBlock(genDoc.ChainID, genDoc.SupportQuorum)
+	genblock := types.MakeGenesisBlock(genDoc.ChainID)
 	// genesis state没有设置个人的验证公钥 上层设置
 	genstate := state.MakeGenesisState(
 		genDoc.ChainID, genDoc.InitialSlot,

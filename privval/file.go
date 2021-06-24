@@ -2,6 +2,7 @@ package privval
 
 import (
 	"chainbft_demo/crypto/bls"
+	"chainbft_demo/crypto/threshold"
 	"chainbft_demo/types"
 	"fmt"
 	"github.com/tendermint/tendermint/crypto"
@@ -61,6 +62,21 @@ func NewFilePV(privKey crypto.PrivKey, keyFilePath string) *FilePV {
 			filePath: keyFilePath,
 		},
 	}
+}
+
+func GenFilePVWithSeedAndIdx(keyFilePath string, threshold_val int, idx, seed int64) *FilePV {
+	// 集群主私钥
+	primary := bls.GenPrivKeyWithSeed(seed)
+
+	// 根据主私钥生成的随机多项式 用来生成节点的私钥
+	poly := threshold.Master(primary, threshold_val, seed)
+
+	// 节点自己的私钥
+	priv, err := poly.GetValue(idx)
+	if err != nil {
+		panic(err)
+	}
+	return NewFilePV(priv, keyFilePath)
 }
 
 // GenFilePV generates a new validator with randomly generated private key

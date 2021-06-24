@@ -32,10 +32,10 @@ func NewQuorum() Quorum {
 
 // Quorum明确的表示某个区块有2t+1个节点赞同或反对
 type Quorum struct {
-	SLot      LTime
-	BlockHash tmbytes.HexBytes
-	Type      QuorumType
-	Signature tmbytes.HexBytes
+	SLot      LTime            `json:"slot"`
+	BlockHash tmbytes.HexBytes `json:"block_hash"`
+	Type      QuorumType       `json:"quorum_type"`
+	Signature tmbytes.HexBytes `json:"signature"`
 }
 
 func (q *Quorum) IsEmpty() bool {

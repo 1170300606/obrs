@@ -56,6 +56,9 @@ func Master(priv bft_bls.PrivKey, d int, seed int64) *Polynome {
 // 计算p(idx)的值
 // NOTE idx不能为0
 func (p Polynome) GetValue(idx int64) (bft_bls.PrivKey, error) {
+	if idx == 0 {
+		return nil, errors.New("idx不能为0")
+	}
 	return p.getValue(bn256_suite, idx)
 }
 

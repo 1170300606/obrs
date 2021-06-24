@@ -1,6 +1,6 @@
 package types
 
-func MakeGenesisBlock(ChainID string, supportQuorum Quorum) *Block {
+func MakeGenesisBlock(ChainID string) *Block {
 	return &Block{
 		Header: Header{
 			ChainID:       ChainID,
@@ -12,7 +12,7 @@ func MakeGenesisBlock(ChainID string, supportQuorum Quorum) *Block {
 		Data: Data{
 			Txs: Txs{},
 		},
-		VoteQuorum: supportQuorum,
+		VoteQuorum: Quorum{},
 		Evidences:  []Quorum{},
 	}
 }

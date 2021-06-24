@@ -9,8 +9,9 @@ import (
 	"go.dedis.ch/kyber/v3/pairing/bn256"
 	"go.dedis.ch/kyber/v3/sign/bls"
 	"go.dedis.ch/kyber/v3/util/random"
-	"golang.org/x/exp/rand"
 	"io"
+	//"golang.org/x/exp/rand"
+	"math/rand"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -117,6 +118,12 @@ func GenPrivKey() PrivKey {
 	return genPrivKey(crypto.CReader())
 }
 
+// GenPrivKeyWithSeed 临时函数，使用指定的seed生成bls私钥
+func GenPrivKeyWithSeed(seed int64) PrivKey {
+	rander := rand.New(rand.NewSource(seed))
+	return genPrivKey(rander)
+}
+
 // genPrivKey generates a new ed25519 private key using the provided reader.
 func genPrivKey(rander io.Reader) PrivKey {
 	cipher1 := random.New(rander)
@@ -126,7 +133,7 @@ func genPrivKey(rander io.Reader) PrivKey {
 	return PrivKey(data)
 }
 
-func GenTestPrivKey(seed uint64) PrivKey {
+func GenTestPrivKey(seed int64) PrivKey {
 	rander := rand.New(rand.NewSource(seed))
 	return genPrivKey(rander)
 }
@@ -187,4 +194,11 @@ func (pubKey PubKey) Equals(other crypto.PubKey) bool {
 	}
 
 	return false
+}
+
+// GenPrimaryKey 返回一个集群的公共公钥
+func GenPrimaryKeyWithSeed(seed int64) crypto.PubKey {
+	priv := GenPrivKeyWithSeed(seed)
+
+	return priv.PubKey()
 }
