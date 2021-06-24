@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 
 	cmd "chainbft_demo/cmd/commands"
+	nm "chainbft_demo/node"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/cli"
-	nm "chainbft_demo/node"
 )
 
 func main() {
@@ -28,7 +28,14 @@ func main() {
 	nodeFunc := nm.DefaultNewNode
 
 	// Create & start node
-	rootCmd.AddCommand(cmd.NewRunNodeCmd(nodeFunc))
+	rootCmd.AddCommand(
+		cmd.GenNodeKeyCmd,
+		cmd.GenValidatorCmd,
+		cmd.ShowNodeIDCmd,
+		cmd.ShowValidatorCmd,
+		cmd.GenGenesisCmd,
+		cmd.NewRunNodeCmd(nodeFunc),
+	)
 
 	cmd := cli.PrepareBaseCmd(rootCmd, "TM", os.ExpandEnv(filepath.Join("$HOME", cfg.DefaultTendermintDir)))
 	if err := cmd.Execute(); err != nil {

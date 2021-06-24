@@ -17,6 +17,14 @@ import (
 var (
 	config = cfg.DefaultConfig()
 	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+
+	// 用来生成密钥
+	seed  int64
+	idx   int64
+	thres int
+
+	chainID       string
+	cluster_count int
 )
 
 func init() {
