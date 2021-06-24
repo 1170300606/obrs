@@ -1,8 +1,6 @@
 package types
 
-import tmbytes "github.com/tendermint/tendermint/libs/bytes"
-
-func MakeGenesisBlock(ChainID string, supportQuorum tmbytes.HexBytes) *Block {
+func MakeGenesisBlock(ChainID string, supportQuorum Quorum) *Block {
 	return &Block{
 		Header: Header{
 			ChainID:       ChainID,
@@ -14,11 +12,8 @@ func MakeGenesisBlock(ChainID string, supportQuorum tmbytes.HexBytes) *Block {
 		Data: Data{
 			Txs: Txs{},
 		},
-		VoteQuorum: Quorum{
-			Type:      SupportQuorum,
-			BlockHash: []byte{},
-		},
-		Evidences: []Quorum{},
+		VoteQuorum: supportQuorum,
+		Evidences:  []Quorum{},
 	}
 }
 

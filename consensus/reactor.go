@@ -6,6 +6,7 @@ import (
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/events"
 	tmjson "github.com/tendermint/tendermint/libs/json"
+	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
 	"math/rand"
@@ -68,6 +69,11 @@ func NewReactor(conS *ConsensusState, options ...ReactorOption) *Reactor {
 	}
 
 	return conR
+}
+
+func (conR *Reactor) SetLogger(l log.Logger) {
+	conR.Logger = l
+	conR.consensus.SetLogger(l)
 }
 
 func (conR *Reactor) OnStart() error {

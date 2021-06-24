@@ -3,7 +3,11 @@ package node
 import (
 	"chainbft_demo/consensus"
 	"chainbft_demo/mempool"
+	"chainbft_demo/privval"
 	"chainbft_demo/rpc"
+	state "chainbft_demo/state"
+	"chainbft_demo/store"
+	"chainbft_demo/types"
 	"errors"
 	"fmt"
 	cfg "github.com/tendermint/tendermint/config"
@@ -24,20 +28,47 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 	return NewNode(config, nodeKey, logger)
 }
 
+// NewNode依次设置好节点参数以及reactor
+// 设置顺序： load 私钥文件；load genesisFile（验证者信息、创世块信息）；
+// 生成mempool；生成blockExecutor；生成consensus
 func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, options ...Option) (*Node, error) {
-	// create services
+	if config.PrivValidatorKeyFile() == "" {
+		// 如果私钥地址为空 不生成直接报错返回
+		return nil, errors.New("initiate private key first")
+	}
+	privValidator := privval.LoadFilePV(config.PrivValidatorKeyFile())
+	pubKey, err := privValidator.GetPubKey()
+	if err != nil {
+		return nil, err
+	}
+	validator := types.NewValidator(pubKey)
 
-	// create Consensus reactor
-	conlogger := logger.With("module", "Consensus")
-	conR := consensus.NewReactor()
-	conR.SetLogger(conlogger)
-	conR.SetId(nodekey.ID()) // TODO remove
+	// 从文件中加载genesis block
+	genState, err := loadStateFromFile(config.PrivValidatorStateFile())
+	if err != nil {
+		return nil, err
+	}
+	// 手动设置自己的验证者信息
+	genState.Validator = validator
 
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
-	mem := mempool.NewListMempool(config.Mempool, 0)
-	memR := mempool.NewReactor(config.Mempool, mem)
+	memR, mem := createMempoolReactor(config.Mempool, memlogger)
 	memR.SetLogger(memlogger)
+
+	// 生成block执行器
+	execLogger := logger.With("module", "state")
+	blockExec := state.NewBlockExecutor(mem)
+	blockExec.SetLogger(execLogger)
+
+	// create Consensus reactor
+	conlogger := logger.With("module", "Consensus")
+	conR, conS := createConsensusReactor(config.Consensus, conlogger,
+		genState,
+		blockExec, nil,
+		privValidator,
+	)
+	conR.SetLogger(conlogger)
 
 	// create p2p network
 	p2pLogger := logger.With("module", "P2P")
@@ -65,6 +96,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 		sw:               sw,
 		nodeInfo:         nodeinfo,
 		nodeKey:          nodekey,
+		conS:             conS,
 		consensusReactor: conR,
 		mempool:          mem,
 		mempoolReactor:   memR,
@@ -76,6 +108,51 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	}
 
 	return node, nil
+}
+
+// loadStateFromFile 从文件中加载创世块的状态
+func loadStateFromFile(stateFile string) (state.State, error) {
+	genDoc, err := types.GenesisDocFromFile(stateFile)
+	if err != nil {
+		return state.State{}, err
+	}
+
+	genblock := types.MakeGenesisBlock(genDoc.ChainID, genDoc.SupportQuorum)
+	// genesis state没有设置个人的验证公钥 上层设置
+	genstate := state.MakeGenesisState(
+		genDoc.ChainID, genDoc.InitialSlot,
+		genblock,
+		nil, genDoc.PublicValidator(), genDoc.ValidatorSet())
+
+	return genstate, nil
+}
+
+func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
+	genState state.State,
+	blockExec state.BlockExecutor, blockStore store.Store,
+	privKey types.PrivValidator) (*consensus.Reactor, *consensus.ConsensusState) {
+
+	// 创建consensus状态机
+	conS := consensus.NewDefaultConsensusState(
+		config, genState.InitialSlot,
+		privKey, genState.Validators,
+		blockExec, blockStore,
+		genState,
+	)
+
+	// create Consensus reactor
+	conR := consensus.NewReactor(conS)
+	conR.SetLogger(logger)
+
+	return conR, conS
+}
+
+func createMempoolReactor(config *cfg.MempoolConfig, logger log.Logger) (*mempool.Reactor, mempool.Mempool) {
+	mem := mempool.NewListMempool(config)
+	memR := mempool.NewReactor(config, mem)
+	memR.SetLogger(logger)
+
+	return memR, mem
 }
 
 func createTransport(
@@ -134,7 +211,8 @@ func makeNodeInfo(
 		Network:       "test-chain-xNfEDp",
 		Version:       version.TMCoreSemVer,
 		Channels: []byte{
-			consensus.TestChannel,
+			consensus.VoteChannel,
+			consensus.ProposalChannel,
 			mempool.MempoolChannel,
 		}, // 必须在这里声明Channel才可以使用，为什么
 		Moniker: config.Moniker,
@@ -174,6 +252,7 @@ type Node struct {
 	isListening bool
 
 	// service
+	conS             *consensus.ConsensusState
 	consensusReactor *consensus.Reactor
 	mempool          mempool.Mempool
 	mempoolReactor   *mempool.Reactor

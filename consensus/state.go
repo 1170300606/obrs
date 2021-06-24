@@ -128,9 +128,6 @@ func (cs *ConsensusState) SetLogger(logger log.Logger) {
 	if cs.slotClock != nil {
 		cs.slotClock.SetLogger(logger)
 	}
-	if cs.blockExec != nil {
-		cs.blockExec.SetLogger(logger)
-	}
 }
 
 func SetValidtor(validator types.PrivValidator) ConsensusOption {
