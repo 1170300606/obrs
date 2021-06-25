@@ -14,5 +14,11 @@
 - consensus
     - reactor gossips：vote-gossip、block-gossip、slot-gossip
     - panic恢复 - 尽可能从Panic中恢复运行而不是结束协程，程序健壮性要求 后期工作 
+    - 调试信息太少，增加日志内容
 - 测试集
     - smallBank
+
+## bug
+
+- ctl+c 无法退出程序
+- rpc发送交易有问题，需要思考如何点位
