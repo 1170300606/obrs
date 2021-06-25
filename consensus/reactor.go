@@ -78,10 +78,12 @@ func (conR *Reactor) SetLogger(l log.Logger) {
 
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Consensus Reactor started.")
-	go func() {
-	}()
+
 	conR.subscribeToBroadcastEvents()
+	conR.consensus.slotClock.OnStart()
+
 	conR.consensus.OnStart()
+	conR.consensus.slotClock.ResetClock(4)
 	return nil
 }
 

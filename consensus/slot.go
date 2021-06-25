@@ -58,17 +58,13 @@ type slotClock struct {
 }
 
 func (sc *slotClock) OnStart() error {
-	sc.Logger.Debug("slot clock starts.")
+	sc.Logger.Info("slot clock starts.")
 	go func() {
 		for {
 			select {
-			case <-sc.BaseService.Quit():
-				sc.Logger.Info("slot clock stopped.")
+			case <-sc.Quit():
 				// consensus通过停止baseService来停止slotClock
-				if sc.t != nil {
-					sc.t.Stop()
-				}
-				break
+				return
 			case now := <-sc.t.C:
 				go func() { sc.timerChan <- now }()
 			case now := <-sc.timerChan:
@@ -88,8 +84,15 @@ func (sc *slotClock) OnStart() error {
 	return nil
 }
 
-func (sc *slotClock) OnStop() {
-	sc.BaseService.OnStop()
+func (sc *slotClock) Stop() error {
+	if sc.t != nil {
+		sc.t.Stop()
+	}
+	if err := sc.BaseService.Stop(); err != nil {
+		sc.Logger.Error("failed trying to stop eventSwitch", "error", err)
+	}
+
+	return sc.BaseService.Stop()
 }
 
 func (s *slotClock) GetSlot() types.LTime {

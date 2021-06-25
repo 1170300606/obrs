@@ -152,10 +152,22 @@ func SetValidtorSet(validatorSet *types.ValidatorSet) ConsensusOption {
 func (cs *ConsensusState) OnStart() error {
 	go cs.recieveRoutine()
 	go cs.recieveEventRoutine()
+	cs.Logger.Info("consensus receive rountines started.")
 	return nil
 }
 
 func (cs *ConsensusState) OnStop() {
+	if err := cs.eventSwitch.Stop(); err != nil {
+		cs.Logger.Error("failed trying to stop eventSwitch", "error", err)
+	}
+
+	if err := cs.slotClock.Stop(); err != nil {
+		cs.Logger.Error("failed trying to stop slotTimer", "error", err)
+	}
+
+	if err := cs.Stop(); err != nil {
+		cs.Logger.Error("failed trying to stop consensusState", "error", err)
+	}
 }
 
 // receiveRoutine负责接收所有的消息
@@ -164,6 +176,10 @@ func (cs *ConsensusState) recieveRoutine() {
 	cs.Logger.Debug("consensus receive rountine starts.")
 	for {
 		select {
+		case <-cs.Quit():
+			cs.Logger.Debug("recieveRoute quit.")
+			return
+
 		case msginfo := <-cs.peerMsgQueue:
 			// 接收到其他节点的消息
 			cs.handleMsg(msginfo)
@@ -176,9 +192,6 @@ func (cs *ConsensusState) recieveRoutine() {
 			cs.Logger.Debug("recieved timeout event", "timeout", ti)
 			// 统一处理超时事件，目前只有切换slot的超时事件发生
 			cs.handleTimeOut(ti)
-		case <-cs.Quit():
-			cs.Logger.Debug("recieveRoute quit.")
-			return
 		}
 	}
 }
@@ -188,6 +201,9 @@ func (cs *ConsensusState) recieveEventRoutine() {
 	// event
 	for {
 		select {
+		case <-cs.Quit():
+			cs.Logger.Debug("recieveEventRoutine quit.")
+			return
 		case msginfo := <-cs.eventMsgQueue:
 			//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
 			if err := msginfo.Msg.ValidateBasic(); err != nil {
@@ -196,9 +212,6 @@ func (cs *ConsensusState) recieveEventRoutine() {
 			}
 			event := msginfo.Msg.(cstype.RoundEvent)
 			cs.handleEvent(event)
-		case <-cs.Quit():
-			cs.Logger.Debug("recieveEventRoutine quit.")
-			return
 		}
 	}
 }
