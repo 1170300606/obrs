@@ -1,8 +1,10 @@
-OUTPUT?=build/bft
+#!/usr/bin/make -f
+OUTPUT?=build/chain_bft
 
+build-linux:
+	GOOS=linux GOARCH=amd64 $(MAKE) build
 
 build:
-	rm -rf $(OUTPUT)
 	go build -o $(OUTPUT) ./cmd/
 
-.PHONY: build
+.PHONY: build-linux build
