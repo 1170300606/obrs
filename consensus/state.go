@@ -231,7 +231,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		// 收到新的提案
 		// TODO核验提案身份 - slot是否一致、提案人是否正确
 		if err := msg.Proposal.ValidteBasic(); err != nil {
-			cs.Logger.Error("receive wrong proposal.", "error", err)
+			cs.Logger.Error("receive wrong proposal.", "error", err, "proposal", msg.Proposal.Block)
 			return
 		}
 
@@ -498,7 +498,7 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 		}
 	}()
 
-	cs.Logger.Debug("ready to set proposal", "proposal", proposal)
+	cs.Logger.Debug("ready to set proposal", "proposal", proposal.Block)
 
 	// 再次验证proposal - 签名、颁发者是否正确
 	// 验证提案的slot是否和当前的slot相等

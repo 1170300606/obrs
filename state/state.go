@@ -177,3 +177,7 @@ func (state *State) UpdateState(block *types.Block) {
 		}
 	}
 }
+
+func (state *State) GenesisBlock() *types.Block {
+	return state.BlockTree.GetRoot()
+}

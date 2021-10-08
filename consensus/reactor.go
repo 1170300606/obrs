@@ -77,13 +77,20 @@ func (conR *Reactor) SetLogger(l log.Logger) {
 }
 
 func (conR *Reactor) OnStart() error {
+	genblock := conR.consensus.state.GenesisBlock()
+	if genblock.Ctime.After(time.Now()) {
+		// 如果当前时间早于定义的时间
+		conR.Logger.Info("wait genesis time", "time", genblock.Ctime, "sleep", genblock.Ctime.Sub(time.Now()))
+		time.Sleep(genblock.Ctime.Sub(time.Now()))
+	}
+
 	conR.Logger.Info("Consensus Reactor started.")
 
 	conR.subscribeToBroadcastEvents()
 	conR.consensus.slotClock.OnStart()
 
 	conR.consensus.OnStart()
-	conR.consensus.slotClock.ResetClock(4)
+	conR.consensus.slotClock.ResetClock(10 * time.Second) // slot 间隔
 	return nil
 }
 

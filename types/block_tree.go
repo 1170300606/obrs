@@ -174,3 +174,7 @@ func (tree *BlockTree) queryNodeByHash(hash []byte) (*treeNode, error) {
 
 	return nil, ErrNoQueryBlock
 }
+
+func (tree *BlockTree) GetRoot() *Block {
+	return tree.root.data
+}

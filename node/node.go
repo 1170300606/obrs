@@ -117,7 +117,7 @@ func loadStateFromFile(stateFile string) (state.State, error) {
 		return state.State{}, err
 	}
 
-	genblock := types.MakeGenesisBlock(genDoc.ChainID)
+	genblock := types.MakeGenesisBlock(genDoc.ChainID, genDoc.GenesisTime)
 	// genesis state没有设置个人的验证公钥 上层设置
 	genstate := state.MakeGenesisState(
 		genDoc.ChainID, genDoc.InitialSlot,
@@ -291,6 +291,7 @@ func (n *Node) OnStart() error {
 	}
 
 	// start the Switch
+	// 这一步会启动所有的reactor
 	err = n.sw.Start()
 	if err != nil {
 		return err

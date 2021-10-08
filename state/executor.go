@@ -140,6 +140,7 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 		parentBlock.BlockHash,
 		state.Validator.Address, state.Validators.Hash(),
 	)
+	block.Hash()
 
 	// step 4 生成evidence
 	block.Evidences = []types.Quorum{}

@@ -51,7 +51,7 @@ func newConsensusStateWithConfig(
 	memplfunc ...memplFunc,
 ) (*ConsensusState, cleanup) {
 	chainID := "CONSENSUS_TEST"
-	geneBlock := types.MakeGenesisBlock(chainID)
+	geneBlock := types.MakeGenesisBlock(chainID, time.Now())
 
 	state := bkstate.MakeGenesisState(chainID, types.LtimeZero, geneBlock, val, pub_val, vals)
 

@@ -42,15 +42,17 @@ func TestProposalWithSupportQuorum(t *testing.T) {
 
 	// reactor[0] 负责提案
 	proposal := reactors[0].consensus.defaultProposal()
-
+	t.Log(proposal.BlockHash)
 	assert.NotNil(t, proposal, "提案不应该为空")
 
 	// 给通信一定时间后检查提案有没有收到
 	time.Sleep(2 * time.Second)
+
 	for i := 0; i < count; i++ {
 		cs := reactors[i].consensus
 		assert.NotNil(t, cs.Proposal, "#{%v}的proposal不应该为空", i)
 		assert.Equalf(t, proposal.Hash(), cs.Proposal.Hash(), "#{%v}的proposal和leader不一样", i)
+		t.Log(cs.Proposal.Block)
 	}
 
 	// 手动进入apply step

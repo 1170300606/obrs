@@ -9,6 +9,7 @@ import (
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmos "github.com/tendermint/tendermint/libs/os"
 	tmtime "github.com/tendermint/tendermint/types/time"
+	"time"
 )
 
 var GenGenesisCmd = &cobra.Command{
@@ -57,7 +58,7 @@ func genGenesisFile(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	genBlock := types.MakeGenesisBlock(chainID)
+	genBlock := types.MakeGenesisBlock(chainID, time.Now())
 
 	signature, err := primary_priv.Sign(types.ProposalSignBytes(chainID, &types.Proposal{genBlock}))
 	if err != nil {

@@ -1,10 +1,13 @@
 package types
 
-func MakeGenesisBlock(ChainID string) *Block {
+import "time"
+
+func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 	return &Block{
 		Header: Header{
 			ChainID:       ChainID,
 			Slot:          LtimeZero,
+			Ctime:         genesisTime,
 			BlockState:    CommiitedBlock,
 			LastBlockHash: []byte{},
 			BlockHash:     nil,

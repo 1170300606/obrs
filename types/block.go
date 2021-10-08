@@ -5,6 +5,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"sync"
+	"time"
 )
 
 type BlockState uint8
@@ -88,6 +89,7 @@ type Header struct {
 	ChainID    string     `json:"chain_id"`
 	Slot       LTime      `json:"slot"`
 	BlockState BlockState `json:"block_state"` // 不参与hash的计算
+	Ctime      time.Time  `json:"create_time"` // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
 
 	// 数据hash
 	LastBlockHash  tmbytes.HexBytes `json:last_block_hash`   // 上一个区块的信息

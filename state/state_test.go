@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 func TestNewBranch(t *testing.T) {
 	chainID := "state_test"
-	genBlock := types.MakeGenesisBlock(chainID, []byte("signature"))
+	genBlock := types.MakeGenesisBlock(chainID, time.Now())
 	genState := MakeGenesisState(chainID, types.LtimeZero, genBlock, nil, nil, nil)
 
 	treeCase := []struct {

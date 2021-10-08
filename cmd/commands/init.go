@@ -3,6 +3,7 @@ package commands
 import (
 	"chainbft_demo/crypto/bls"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -64,7 +65,7 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Found genesis file", "path", genFile)
 	} else {
 		chainID := fmt.Sprintf("test-chain-%v", tmrand.Str(6))
-		genBlock := types.MakeGenesisBlock(chainID)
+		genBlock := types.MakeGenesisBlock(chainID, time.Now())
 		quorum := types.Quorum{
 			SLot:      0,
 			BlockHash: genBlock.Hash(),
