@@ -6,7 +6,6 @@ import (
 
 	cmd "chainbft_demo/cmd/commands"
 	nm "chainbft_demo/node"
-	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/cli"
 )
 
@@ -37,7 +36,7 @@ func main() {
 		cmd.NewRunNodeCmd(nodeFunc),
 	)
 
-	cmd := cli.PrepareBaseCmd(rootCmd, "TM", os.ExpandEnv(filepath.Join("$HOME", cfg.DefaultTendermintDir)))
+	cmd := cli.PrepareBaseCmd(rootCmd, "TM", os.ExpandEnv(filepath.Join("$HOME", ".chain_bft")))
 	if err := cmd.Execute(); err != nil {
 		panic(err)
 	}
