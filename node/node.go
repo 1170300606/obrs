@@ -335,6 +335,7 @@ func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener,
 		if err != nil {
 			return nil, err
 		}
+		logger.Info("rpc server start listen", "addr", listenAddr)
 
 		var rootHandler http.Handler = mux
 
@@ -356,7 +357,7 @@ func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener,
 }
 
 func (n *Node) OnStop() {
-	n.consensusReactor.OnStop()
+	//n.consensusReactor.OnStop()
 
 	n.sw.Stop()
 

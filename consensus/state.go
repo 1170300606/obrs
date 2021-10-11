@@ -23,7 +23,7 @@ var (
 // 临时配置区
 const (
 	threshold          = 3
-	slotTimeOut        = 5 * time.Second   // 两个slot之间的间隔
+	slotTimeOut        = 10 * time.Second  // 两个slot之间的间隔
 	immediateTimeOut   = 0 * time.Second   //
 	initialSlotTimeout = 100 * time.Second // 节点启动后clock默认超时时间
 )
@@ -168,6 +168,7 @@ func (cs *ConsensusState) OnStop() {
 	if err := cs.Stop(); err != nil {
 		cs.Logger.Error("failed trying to stop consensusState", "error", err)
 	}
+	cs.Logger.Info("consensus server stopped.")
 }
 
 // receiveRoutine负责接收所有的消息
@@ -177,7 +178,7 @@ func (cs *ConsensusState) recieveRoutine() {
 	for {
 		select {
 		case <-cs.Quit():
-			cs.Logger.Debug("recieveRoute quit.")
+			cs.Logger.Info("recieveRoute quit.")
 			return
 
 		case msginfo := <-cs.peerMsgQueue:
@@ -202,7 +203,7 @@ func (cs *ConsensusState) recieveEventRoutine() {
 	for {
 		select {
 		case <-cs.Quit():
-			cs.Logger.Debug("recieveEventRoutine quit.")
+			cs.Logger.Info("recieveEventRoutine quit.")
 			return
 		case msginfo := <-cs.eventMsgQueue:
 			//自己节点产生的消息，其实和peerMsgQueue一致：所以有一个统一的入口
@@ -235,13 +236,16 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 			return
 		}
 
-		cs.Logger.Debug("receive proposal", "slot", cs.CurSlot, "proposal", msg.Proposal)
+		cs.Logger.Info("receive proposal", "slot", cs.CurSlot, "proposal", msg.Proposal)
 		if cs.Proposal == nil || cs.Proposal.BlockState == types.DefaultBlock {
-			// 如果不为DefaultBlock 说明节点已经收到一个提案了 不再接受其他提案
+			// 如果不为DefaultBlock 说明节点已经收到一个有效的提案了 不再接受其他提案
 			if err := cs.setProposal(msg.Proposal); err != nil {
 				cs.Logger.Error("set proposal failed.", "error", err)
 				return
 			}
+			cs.Logger.Info("set proposal success.", "cur", cs.CurSlot, "proposer", cs.Proposer.Address)
+		} else {
+			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
 		}
 	case *VoteMessage:
 		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
@@ -249,7 +253,8 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		// added为false不代表vote不合法，可能只是已经添加过了
 		added, err := cs.TryAddVote(msg.Vote, peerID)
 		if err != nil {
-			cs.Logger.Error("add vote failed.", "reason", err, "vote", msg.Vote)
+			// TODO
+			//cs.Logger.Error("add vote failed.", "reason", err, "vote", msg.Vote)
 			return
 		}
 		if added {
@@ -267,6 +272,13 @@ func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
 	defer cs.mtx.Unlock()
 
 	cs.Logger.Debug("recieve event", "event", event)
+
+	// 先检查事件是否还有效
+	if !cs.CurSlot.Equal(event.Slot) && event.Type != cstype.RoundEventNewSlot {
+		cs.Logger.Info("receive expired event.", "event", event)
+		return
+	}
+
 	switch event.Type {
 	case cstype.RoundEventNewSlot:
 		cs.enterNewSlot(event.Slot)
@@ -297,7 +309,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 		// 成功切换到新的slot，更新状态到RoundStepSLot
 		cs.updateStep(cstype.RoundStepSlot)
 	}()
-	cs.Logger.Debug("enter new slot", "slot", slot)
+	cs.Logger.Info("enter new slot", "slot", slot)
 
 	// 完成切换到slot ？是否需要先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
@@ -324,10 +336,13 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 // RoundEventApply事件触发
 // 负责触发RoundEventPropose事件
 func (cs *ConsensusState) enterApply() {
-	cs.Logger.Debug("enter apply step", "slot", cs.CurSlot)
+	cs.Logger.Info("enter apply step", "slot", cs.CurSlot)
 	defer func() {
 		// 成功执行完apply，更新状态到RoundStepApply
 		cs.updateStep(cstype.RoundStepApply)
+
+		// 生成切换到propose阶段的事件
+		cs.sendEventMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventPropose, cs.CurSlot}, ""})
 	}()
 
 	// 必须处于RoundStepSlot才可以Apply
@@ -337,7 +352,7 @@ func (cs *ConsensusState) enterApply() {
 
 	if !cs.hasProposal() {
 		// 如果节点在这一轮slot没有收到提案，提前结束apply阶段
-		cs.Logger.Debug("proposal is default proposal, skip apply step")
+		cs.Logger.Info("proposal is default proposal, skip apply step")
 		return
 	}
 
@@ -412,7 +427,7 @@ func (cs *ConsensusState) hasProposal() bool {
 // RoundEventPropose事件触发
 // 不用触发任何事件，等待超时事件即可
 func (cs *ConsensusState) enterPropose() {
-	cs.Logger.Debug("enter propose step", "slot", cs.CurSlot)
+	cs.Logger.Info("enter propose step", "slot", cs.CurSlot)
 
 	defer func() {
 		// 比较特殊，提案结束后进入RoundStepWait 等待接收消息
@@ -431,8 +446,10 @@ func (cs *ConsensusState) enterPropose() {
 	// 获得当前节点的validator数据
 	_, val := cs.Validators.GetByIndex(cs.ValIndex)
 	if !cs.isProposer(val) {
-		cs.Logger.Debug("I'm not slot leader. proposePhase end.")
+		cs.Logger.Debug("I'm not slot leader. proposePhase end.", "cur", cs.CurSlot, "valIndex", cs.ValIndex)
 		return
+	} else {
+		cs.Logger.Info("I'm leader, prepare to propose.", "cur", cs.CurSlot)
 	}
 
 	// 使用函数接口来调用propose逻辑，方便测试
@@ -460,6 +477,7 @@ func (cs *ConsensusState) isProposer(val *types.Validator) bool {
 
 func (cs *ConsensusState) decideProposer() {
 	cs.Proposer = cs.Validators.GetProposer(cs.CurSlot)
+	cs.Logger.Info(fmt.Sprintf("this slot proposer is %v", cs.Proposer.Address.String()), "cur", cs.CurSlot)
 }
 
 // defaultProposal 默认生成提案的函数
@@ -521,6 +539,7 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	cs.state.UpdateState(proposal.Block)
 
 	cs.Proposal = proposal
+	//cs.Proposal.BlockState = types.SuspectBlock
 
 	// 接受提案 然后触发事件通知reactor转发
 	cs.eventSwitch.FireEvent(EventNewProposal, proposal)

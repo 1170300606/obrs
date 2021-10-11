@@ -1,6 +1,7 @@
 package main
 
 import (
+	cfg "github.com/tendermint/tendermint/config"
 	"os"
 	"path/filepath"
 
@@ -10,6 +11,7 @@ import (
 )
 
 func main() {
+	cfg.DefaultTendermintDir = ".chain_bft"
 	rootCmd := cmd.RootCmd
 	rootCmd.AddCommand(
 		//cmd.InitFilesCmd,
@@ -36,7 +38,7 @@ func main() {
 		cmd.NewRunNodeCmd(nodeFunc),
 	)
 
-	cmd := cli.PrepareBaseCmd(rootCmd, "TM", os.ExpandEnv(filepath.Join("$HOME", ".chain_bft")))
+	cmd := cli.PrepareBaseCmd(rootCmd, "TM", os.ExpandEnv(filepath.Join("$HOME", cfg.DefaultTendermintDir)))
 	if err := cmd.Execute(); err != nil {
 		panic(err)
 	}
