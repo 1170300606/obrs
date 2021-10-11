@@ -9,5 +9,5 @@
 ./build/chain_bft gen-node-key
 
 # 生成节点的公私钥文件
-
+./build/chain_bft gen-validator --idx 1 --seed 100 --thres 3
 ```
