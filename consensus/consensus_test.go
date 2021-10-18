@@ -446,3 +446,23 @@ func TestApplyPrecommitBlock(t *testing.T) {
 	newBlock = cs.state.BlockTree.GetLatestBlock()
 	assert.Equal(t, proposal2.Hash(), newBlock.Hash(), "提案应该为新的扩展分支")
 }
+
+// TestFutureProposal 测试慢节点收到快节点leader的proposal
+func TestFutureProposal(t *testing.T) {
+	count := 2
+	config := config.ResetTestRoot("consensus_test")
+	logger := log.NewFilter(log.TestingLogger(), log.AllowDebug())
+
+	privs, vals, pub_val := newPrivAndValSet(count)
+	reactors := makeAndConnectReactors(config, logger, count, privs, vals, pub_val)
+
+	// 0号是慢节点 1是快节点且为leader
+	reactors[0].consensus.enterNewSlot(types.LTime(2))
+	reactors[1].consensus.enterNewSlot(types.LTime(3))
+
+	reactors[1].OnStart()
+	time.Sleep(10 * time.Second)
+	reactors[0].OnStart()
+
+	time.Sleep(20 * time.Second)
+}

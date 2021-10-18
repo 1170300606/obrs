@@ -23,7 +23,9 @@ func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 // MakeBlock 返回一个头信息为空区块
 func MakeBlock(txs []Tx) *Block {
 	block := &Block{
-		Header: Header{},
+		Header: Header{
+			Ctime: time.Now(),
+		},
 		Data: Data{
 			Txs: txs,
 		},

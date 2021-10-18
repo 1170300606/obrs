@@ -188,8 +188,6 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
-	conR.Logger.Debug("prepare to send proposal")
-
 	pBytes, err := tmjson.Marshal(proposal)
 	if err != nil {
 		conR.Logger.Error("Marshal Proposal failed.", "err", err)

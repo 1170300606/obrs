@@ -39,7 +39,7 @@ func TestNewBranch(t *testing.T) {
 			types.LTime(node.slot),
 			node.blockState,
 			blocks[node.previdx].Hash(),
-			[]byte(""), []byte(""))
+			[]byte(""), []byte(""), time.Now())
 		blocks[node.slot] = b
 		b.Hash()
 		assert.NotNil(t, b.LastBlockHash)

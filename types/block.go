@@ -86,10 +86,11 @@ func (b *Block) Hash() tmbytes.HexBytes {
 
 type Header struct {
 	// 基本的区块信息
-	ChainID    string     `json:"chain_id"`
-	Slot       LTime      `json:"slot"`
-	BlockState BlockState `json:"block_state"` // 不参与hash的计算
-	Ctime      time.Time  `json:"create_time"` // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
+	ChainID       string     `json:"chain_id"`
+	Slot          LTime      `json:"slot"`
+	SlotStartTime time.Time  `json:"slot_start_time"` // 临时方案，添加一个切换到新slot的时间，来多个节点之间调整校正
+	BlockState    BlockState `json:"block_state"`     // 不参与hash的计算
+	Ctime         time.Time  `json:"create_time"`     // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
 
 	// 数据hash
 	LastBlockHash  tmbytes.HexBytes `json:last_block_hash`   // 上一个区块的信息
@@ -108,19 +109,23 @@ func (h *Header) Fill(
 	state BlockState,
 	LastBlockHash []byte,
 	valdatorAddr []byte,
-	validatorsHash []byte) {
+	validatorsHash []byte,
+	slotStartTime time.Time,
+) {
 	h.ChainID = chainID
 	h.Slot = Slot
 	h.BlockState = state
 	h.LastBlockHash = LastBlockHash
 	h.ValidatorAddr = valdatorAddr
 	h.ValidatorsHash = validatorsHash
+	h.SlotStartTime = slotStartTime
 }
 
 func (h *Header) Hash() tmbytes.HexBytes {
 	if h == nil {
 		return nil
 	}
+	startTimeHash, _ := h.SlotStartTime.MarshalBinary()
 	if h.BlockHash == nil {
 		h.BlockHash = merkle.HashFromByteSlices([][]byte{
 			[]byte(h.ChainID),
@@ -128,6 +133,7 @@ func (h *Header) Hash() tmbytes.HexBytes {
 			h.LastBlockHash,
 			h.TxsHash,
 			h.ValidatorsHash,
+			startTimeHash,
 		})
 	}
 	return h.BlockHash

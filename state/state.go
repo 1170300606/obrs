@@ -47,9 +47,10 @@ type State struct {
 	Validators *types.ValidatorSet
 
 	// 最后提交的区块的信息
-	LastBlockSlot types.LTime
-	LastBlockHash []byte
-	LastBlockTime time.Time // 提交的时间 - 物理时间
+	LastBlockSlot     types.LTime
+	LastCommitedBlock *types.Block
+	LastBlockHash     []byte
+	LastBlockTime     time.Time // 提交的时间 - 物理时间
 
 	// uncommitted blocks
 	// 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块

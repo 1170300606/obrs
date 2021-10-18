@@ -38,3 +38,8 @@ func (t LTime) Greater(other LTime) bool {
 func (t LTime) Mod(val int) int {
 	return int(int64(t) % int64(val))
 }
+
+// return x - y
+func (x LTime) Sub(y LTime) int {
+	return int(x - y)
+}

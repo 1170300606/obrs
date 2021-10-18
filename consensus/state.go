@@ -59,6 +59,10 @@ type ConsensusState struct {
 	// 方便测试重写逻辑
 	decideProposal func() *types.Proposal               // 生成提案的函数
 	setProposal    func(proposal *types.Proposal) error // 待定 不知道有啥用
+
+	// slot不一致的临时补救
+	futureProposal   map[types.LTime]types.Proposal
+	curSlotStartTime time.Time // 当前slot启动的绝对时间
 }
 
 type ConsensusOption func(*ConsensusState)
@@ -112,6 +116,7 @@ func NewConsensusState(
 		internalMsgQueue: make(chan msgInfo),
 		eventMsgQueue:    make(chan msgInfo),
 		eventSwitch:      events.NewEventSwitch(),
+		futureProposal:   make(map[types.LTime]types.Proposal),
 	}
 
 	cs.BaseService = *service.NewBaseService(nil, "CONSENSUS", cs)
@@ -315,13 +320,10 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
 	cs.LastSlot = cs.CurSlot
 	cs.CurSlot = cs.slotClock.GetSlot()
+	cs.curSlotStartTime = time.Now()
 
 	// 计算这一轮的proposer
 	cs.decideProposer()
-
-	// 设置空提案 该提案不follow任何一个区块
-	cs.Proposal = types.MakeEmptyProposal()
-	cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.Proposer.Address, cs.state.Validators.Hash())
 
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
@@ -338,11 +340,22 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 func (cs *ConsensusState) enterApply() {
 	cs.Logger.Info("enter apply step", "slot", cs.CurSlot)
 	defer func() {
+		if cs.Step != cstype.RoundStepSlot {
+			return
+		}
+
+		// 设置空提案 该提案不follow任何一个区块
+		cs.Proposal = types.MakeEmptyProposal()
+		// TODO start timne
+		cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.Proposer.Address, cs.state.Validators.Hash(), cs.curSlotStartTime)
+
 		// 成功执行完apply，更新状态到RoundStepApply
 		cs.updateStep(cstype.RoundStepApply)
 
 		// 生成切换到propose阶段的事件
 		cs.sendEventMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventPropose, cs.CurSlot}, ""})
+		// 可能在之前的slot收到当前slot的proposal。原因是因为当前节点是慢节点
+		cs.triggleFutureProposal(cs.CurSlot)
 	}()
 
 	// 必须处于RoundStepSlot才可以Apply
@@ -356,18 +369,16 @@ func (cs *ConsensusState) enterApply() {
 		return
 	}
 
-	// TODO 该如何检查slot
-	// 必须处于RoundStepSlot才可以Apply
-	if cs.Step != cstype.RoundStepSlot {
-		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
-	}
-
 	// 尝试根据目前的投票生成quorum
 	voteset := cs.VoteSet.GetVotesBySlot(cs.LastSlot)
 	if voteset != nil {
+		cs.Logger.Debug("voteset is not empty", "size", len(voteset.GetVotes()), "vote set", voteset.GetVotes())
 		// 有收到投票
 		witness := cs.Proposal.Block
 		quorum := voteset.TryGenQuorum(threshold)
+		quorum.SLot = cs.Proposal.Slot
+
+		cs.Logger.Debug("generate quorum done.", "quorum", quorum)
 		cs.Proposal.Block.VoteQuorum = quorum
 
 		if quorum.Type == types.SupportQuorum {
@@ -401,6 +412,8 @@ func (cs *ConsensusState) enterApply() {
 		cs.Proposal.BlockState = types.SuspectBlock
 	}
 
+	cs.Logger.Debug("proposal ready to commit", "status", cs.Proposal.BlockState)
+
 	// 函数会和blockExec交互
 	// 决定提交哪些区块
 	stateCopy := cs.state.Copy()
@@ -413,6 +426,10 @@ func (cs *ConsensusState) enterApply() {
 	// apply 成功，变更状态
 	cs.lastState = cs.state
 	cs.state = newState
+	cs.Logger.Debug("apply done", "last state", cs.lastState, "current state", cs.state)
+
+	// 尝试校正slot时间
+	cs.reviseSlotTime()
 }
 
 // hasProposal 判断是否在这一轮slot有收到合适的提案
@@ -430,17 +447,16 @@ func (cs *ConsensusState) enterPropose() {
 	cs.Logger.Info("enter propose step", "slot", cs.CurSlot)
 
 	defer func() {
+		// 必须处于RoundStepSlot才可以Apply
+		//if cs.Step != cstype.RoundStepApply {
+		//	return
+		//}
 		// 比较特殊，提案结束后进入RoundStepWait 等待接收消息
 		cs.updateStep(cstype.RoundStepWait)
 	}()
 	// 必须处于RoundStepSlot才可以Apply
 	if cs.Step != cstype.RoundStepApply {
 		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepSlot, cs.Step))
-	}
-	// TODO 该如何检查slot
-	// 必须处于RoundStepSlot才可以Apply
-	if cs.Step != cstype.RoundStepApply {
-		panic(fmt.Sprintf("wrong step, excepted: %v, actul: %v", cstype.RoundStepApply, cs.Step))
 	}
 
 	// 获得当前节点的validator数据
@@ -488,6 +504,7 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
+	proposal.SlotStartTime = cs.curSlotStartTime
 
 	// step 3 生成签名
 	if err := cs.PrivVal.SignProposal(cs.state.ChainID, proposal); err != nil {
@@ -497,6 +514,10 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
+
+	// DEBUG 让广播慢一点
+	time.Sleep(500 * time.Millisecond)
+
 	// 通过内部chan传递到defaultSetproposal函数统一处理
 	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
 
@@ -505,7 +526,11 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 // defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
 func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
+	needVote := false
 	defer func() {
+		if !needVote {
+			return
+		}
 		// 判断提案是否符合发布规则
 		if cs.state.IsMatch(proposal) {
 			// 提案正确且符合提案规则，投赞成票
@@ -521,6 +546,13 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	// 再次验证proposal - 签名、颁发者是否正确
 	// 验证提案的slot是否和当前的slot相等
 	if !proposal.Slot.Equal(cs.CurSlot) {
+		if proposal.Slot.Greater(cs.CurSlot) {
+			if err := cs.TryAddFutureProposal(proposal.Slot, *proposal); err != nil {
+				return err
+			}
+			cs.Logger.Debug("receive future proposal, caching it success")
+			return errors.New(fmt.Sprintf("receive future proposal. proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
+		}
 		return errors.New(fmt.Sprintf("proposal slot is not same, proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
 	}
 
@@ -535,6 +567,7 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 		return errors.New("verifying proposal signature failed")
 	}
 
+	needVote = true
 	// 尝试根据提案中的support-quorum更新到对应的区块上
 	cs.state.UpdateState(proposal.Block)
 
@@ -596,12 +629,65 @@ func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, err
 	return true, nil
 }
 
+func (cs *ConsensusState) TryAddFutureProposal(slot types.LTime, proposal types.Proposal) error {
+	_, exist := cs.futureProposal[slot]
+	if exist {
+		return errors.New(fmt.Sprintf("%v slot already exist", slot))
+	}
+
+	cs.futureProposal[slot] = proposal
+
+	return nil
+}
+
+func (cs *ConsensusState) triggleFutureProposal(slot types.LTime) {
+	proposal, exist := cs.futureProposal[slot]
+	if !exist {
+		return
+	}
+	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: &proposal}, ""})
+}
+
+// reviseSlotTime 根据最后一个commit的block里的slot time来统一校正时间
+func (cs *ConsensusState) reviseSlotTime() {
+	if cs.state.LastCommitedBlock == nil {
+		return
+	}
+
+	// 计算当前slot校正后的开始
+	slotdiff := cs.CurSlot.Sub(cs.state.LastCommitedBlock.Slot)
+	if slotdiff <= 0 {
+		cs.Logger.Error("wrong slot diff", "diff", slotdiff)
+		return
+	}
+
+	// 当前slot的结束时间，用来修正当前新的wait timeout
+	// 当前slot的新的开始时间
+	slotStartTime := cs.state.LastCommitedBlock.SlotStartTime
+	for i := 0; i < slotdiff; i++ {
+		slotStartTime = slotStartTime.Add(slotTimeOut)
+	}
+	slotEndTime := slotStartTime.Add(slotTimeOut)
+
+	cs.Logger.Debug("[test] slot", "curSlot", cs.CurSlot, "baseSlot", cs.state.LastCommitedBlock.Slot, "slotDiff", slotdiff)
+	cs.Logger.Debug("[test] time", "curStart", cs.curSlotStartTime, "baseStart", cs.state.LastCommitedBlock.SlotStartTime, "revisedStart", slotStartTime, "revisedEnd", slotEndTime)
+	if time.Now().After(slotEndTime) {
+		// 如果当前时间已经超过校正后的结束时间 跳过该轮校正
+		cs.Logger.Debug("[test] current time is after advised slot end time. pass")
+		return
+	}
+	newTimeout := slotEndTime.Sub(time.Now())
+	cs.curSlotStartTime = slotStartTime
+	cs.slotClock.ResetClock(newTimeout)
+	cs.Logger.Info("ready to revise slot time", "old", cs.curSlotStartTime, "new", slotStartTime, "new timeout", newTimeout)
+}
+
 func (cs *ConsensusState) updateSlot(slot types.LTime) {
 	cs.CurSlot = slot
 }
 
 func (cs *ConsensusState) updateStep(step cstype.RoundStepType) {
-	cs.Logger.Debug("update state", "current", cs.Step, "next", step)
+	//cs.Logger.Debug("update state", "current", cs.Step, "next", step)
 	cs.Step = step
 }
 
@@ -614,7 +700,6 @@ func (cs *ConsensusState) sendEventMessage(mi msgInfo) {
 	default:
 		// NOTE: using the go-routine means our votes can
 		// be processed out of order.
-		cs.Logger.Debug("internal msg queue is full; using a go-routine")
 		go func() { cs.eventMsgQueue <- mi }()
 	}
 }

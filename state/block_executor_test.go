@@ -115,7 +115,7 @@ func TestApplyBlock(t *testing.T) {
 
 	}
 	block := types.MakeBlock(txs)
-	block.Fill("state_test", types.LTime(1), types.PrecommitBlock, genblock.BlockHash, genstate.Validators.Hash(), genstate.Validators.Hash())
+	block.Fill("state_test", types.LTime(1), types.PrecommitBlock, genblock.BlockHash, genstate.Validators.Hash(), genstate.Validators.Hash(), time.Now())
 	block.Signature = []byte("singature")
 	block.Hash()
 	blockExec, cleanup := newBLockExecutor()

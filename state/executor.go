@@ -63,8 +63,8 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(proposal)
+	exec.logger.Debug("prepare to commit blocks", "size", len(toCommitBlock), "toCommitBlocks", toCommitBlock)
 
-	exec.logger.Debug("prepare to commit blocks", "toCommitBlocks", toCommitBlock)
 	// 正式提交交易，在这里可能不止提交一个交易，如果提交成功后还要负责删除mempool中的交易
 	state, err := exec.Commit(state, toCommitBlock)
 	if err != nil {
@@ -76,7 +76,12 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	state.LastBlockTime = time.Now()
 	if len(toCommitBlock) > 0 {
 		// 有提交的区块 更新state的slot
-		state.LastBlockSlot = toCommitBlock[len(toCommitBlock)-1].Slot
+		lastBlock := toCommitBlock[len(toCommitBlock)-1]
+		state.LastBlockSlot = lastBlock.Slot
+		state.LastBlockHash = lastBlock.BlockHash
+		state.LastResultsHash = lastBlock.ResultHash
+		state.LastBlockTime = lastBlock.Ctime
+		state.LastCommitedBlock = lastBlock
 	}
 
 	return state, err
@@ -91,9 +96,10 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 		exec.logger.Debug("commit block", "state", state, "idx", idx)
 		for _, tx := range block.Txs {
 			// commit tx
-			exec.logger.Debug(
-				"commit tx",
-				"tx", tx)
+			tx.Hash()
+			//exec.logger.Debug(
+			//	"commit tx",
+			//	"tx", tx)
 		}
 		// TODO 检查交易执行的状态 如果有一个区块交易执行失败，直接结束本轮提交，是否需要rollback待定
 		block.BlockState = types.CommiitedBlock
@@ -110,7 +116,9 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 
 	newState := state.Copy()
 	// 更新precommit blocks&suspected blocks
+	exec.logger.Debug("to remove blocks.", "blocks", toCommitblocks, "size", newState.UnCommitBlocks.Size())
 	newState.CommitBlocks(toCommitblocks)
+	exec.logger.Debug("after remove.", "size", newState.UnCommitBlocks.Size())
 
 	// TODO 更新提交后的merkle root
 	newState.LastResultsHash = newState.LastResultsHash
@@ -124,7 +132,7 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 }
 
 // 从mempool中打包交易
-func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *types.Proposal {
+func (exec *blockExcutor) CreateProposal(state State, curSlot types.LTime) *types.Proposal {
 	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
 	parentBlock, precommitBlocks := state.NewBranch()
 
@@ -135,10 +143,11 @@ func (exec *blockExcutor) CreateProposal(state State, nextSlot types.LTime) *typ
 
 	// step 3将区块头填补完整
 	block.Fill(
-		state.ChainID, nextSlot,
+		state.ChainID, curSlot,
 		types.ProposalBlock,
 		parentBlock.BlockHash,
 		state.Validator.Address, state.Validators.Hash(),
+		time.Now(),
 	)
 	block.Hash()
 

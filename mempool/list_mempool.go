@@ -6,6 +6,7 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 )
@@ -129,6 +130,14 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
+	// only test
+	n := rand.Intn(10)
+	txs_test := make([]types.Tx, 0, n)
+	for i := 0; i < n; i++ {
+		tx := types.Tx("asdfxcvzx")
+		txs_test = append(txs_test, tx)
+	}
+	return txs_test
 	if max < 0 {
 		max = mem.txs.Len()
 	}
