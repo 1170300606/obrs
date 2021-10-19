@@ -1,10 +1,14 @@
 package types
 
-import "bytes"
+import (
+	"bytes"
+	"sync"
+)
 
 // BlockSet 用来表示区块的一个集合，里面的数据会频繁更新，读写均衡
 // 正常情况集合内不会维护太多数据
 type BlockSet struct {
+	mtx    sync.RWMutex
 	blocks []*Block
 }
 
@@ -24,15 +28,22 @@ func (bs *BlockSet) QueryBlockByHash(hash []byte) *Block {
 }
 
 func (bs *BlockSet) AddBlock(b *Block) {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
 	bs.blocks = append(bs.blocks, b)
 }
 
 func (bs *BlockSet) AddBlocks(blocks ...*Block) {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
 	bs.blocks = append(bs.blocks, blocks...)
 }
 
 // 将blocks从BlockSet中删除
 func (bs *BlockSet) RemoveBlocks(blocks []*Block) {
+	bs.mtx.Lock()
+	bs.mtx.Unlock()
+
 	queryMap := make(map[*Block]struct{})
 
 	for _, block := range blocks {
@@ -55,4 +66,12 @@ func (bs *BlockSet) Size() int {
 
 func (bs *BlockSet) Blocks() []*Block {
 	return bs.blocks
+}
+
+func (bs *BlockSet) ForEach(lambda func(*Block)) {
+	bs.mtx.RLock()
+	defer bs.mtx.RUnlock()
+	for _, block := range bs.blocks {
+		lambda(block)
+	}
 }

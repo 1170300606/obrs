@@ -22,12 +22,14 @@ func NewBlockTree(genBlock *Block) *BlockTree {
 	return &BlockTree{
 		root:     root,
 		lastNode: root,
+		size:     1,
 	}
 }
 
 // block组成的多叉树
 type BlockTree struct {
 	mtx            sync.RWMutex
+	size           int
 	root, lastNode *treeNode
 }
 
@@ -66,7 +68,7 @@ func (tree *BlockTree) AddBlocks(parentHash []byte, data *Block) error {
 	parent.mtx.Lock()
 	defer parent.mtx.Unlock()
 	parent.children = append(parent.children, newNode)
-
+	tree.size += 1
 	return nil
 }
 
@@ -138,6 +140,10 @@ func (tree *BlockTree) GetLatestBlock() *Block {
 	return LastSlotBlock
 }
 
+func (tree *BlockTree) Size() int {
+	return tree.size
+}
+
 // isAncestor 判断tnode是否是other的祖先节点
 // NOTE 调用者负责加锁
 func (tnode *treeNode) isAncestor(other *treeNode) bool {
@@ -177,4 +183,20 @@ func (tree *BlockTree) queryNodeByHash(hash []byte) (*treeNode, error) {
 
 func (tree *BlockTree) GetRoot() *Block {
 	return tree.root.data
+}
+
+// ForEach 以层级遍历的顺序，对所有节点执行lambda函数
+func (tree *BlockTree) ForEach(lambda func(block *Block)) {
+	tree.mtx.RLock()
+	defer tree.mtx.RUnlock()
+	queue := []*treeNode{tree.root}
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		if len(cur.children) > 0 {
+			queue = append(queue, cur.children...)
+		}
+		lambda(cur.data)
+	}
+
 }
