@@ -720,6 +720,37 @@ func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 	}
 }
 
+// ============ Public RPC function
+func (cs *ConsensusState) GetAllBlocks() []*types.Block {
+	// BUG 是否会有锁竞争现象
+	committedBlocks := cs.GetCommittedBlocks()
+
+	uncommittedBlocks := cs.GetUnCommittedBlocks()
+
+	return append(committedBlocks, uncommittedBlocks...)
+}
+
+func (cs *ConsensusState) GetCommittedBlocks() []*types.Block {
+	blocks := make([]*types.Block, 0, cs.state.BlockTree.Size())
+
+	// 从block tree中加载已经commit的区块
+	cs.state.BlockTree.ForEach(func(block *types.Block) {
+		blocks = append(blocks, block)
+	})
+	return blocks
+}
+
+func (cs *ConsensusState) GetUnCommittedBlocks() []*types.Block {
+	blocks := make([]*types.Block, 0, cs.state.UnCommitBlocks.Size())
+
+	// 加载从uncommit blocks中
+	cs.state.UnCommitBlocks.ForEach(func(block *types.Block) {
+		blocks = append(blocks, block)
+	})
+
+	return blocks
+}
+
 // ----- MsgInfo -----
 // 与reactor之间通信的消息格式
 type msgInfo struct {

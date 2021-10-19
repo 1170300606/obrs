@@ -7,4 +7,8 @@ build-linux:
 build:
 	go build -o $(OUTPUT) ./cmd/
 
-.PHONY: build-linux build
+test:
+	make build
+	./build/chain_bft run
+
+.PHONY: build-linux build test

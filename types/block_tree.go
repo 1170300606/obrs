@@ -193,6 +193,7 @@ func (tree *BlockTree) ForEach(lambda func(block *Block)) {
 
 	for len(queue) > 0 {
 		cur := queue[0]
+		queue = queue[1:]
 		if len(cur.children) > 0 {
 			queue = append(queue, cur.children...)
 		}

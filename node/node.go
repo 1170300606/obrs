@@ -310,7 +310,10 @@ func (n *Node) OnStart() error {
 
 func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener, error) {
 	// setup rpc enviroment
-	rpc.SetEnvironment(&rpc.Environment{Mempool: mem})
+	rpc.SetEnvironment(&rpc.Environment{
+		Mempool:   mem,
+		Consensus: n.conS,
+	})
 
 	config := server.DefaultConfig()
 

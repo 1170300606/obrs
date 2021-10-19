@@ -1,6 +1,9 @@
 package rpc
 
-import "chainbft_demo/mempool"
+import (
+	"chainbft_demo/consensus"
+	"chainbft_demo/mempool"
+)
 
 var (
 	env *Environment
@@ -11,5 +14,6 @@ func SetEnvironment(e *Environment) {
 }
 
 type Environment struct {
-	Mempool mempool.Mempool
+	Mempool   mempool.Mempool
+	Consensus *consensus.ConsensusState
 }
