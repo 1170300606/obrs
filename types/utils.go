@@ -8,7 +8,7 @@ func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 			ChainID:       ChainID,
 			Slot:          LtimeZero,
 			Ctime:         genesisTime,
-			BlockState:    CommiitedBlock,
+			BlockState:    CommittedBlock,
 			LastBlockHash: []byte{},
 			BlockHash:     nil,
 		},

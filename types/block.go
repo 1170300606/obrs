@@ -16,7 +16,7 @@ const (
 	ErrorBlock     = BlockState(2)  // 错误的区块，收到against-quorum的区块
 	SuspectBlock   = BlockState(3)  // 没有收到任意quorum的区块
 	PrecommitBlock = BlockState(4)  // supprot-quorum的区块
-	CommiitedBlock = BlockState(20) // 处于PrecommitBlock的区块有suppror-quorum的后代区块
+	CommittedBlock = BlockState(20) // 处于PrecommitBlock的区块有suppror-quorum的后代区块
 )
 
 func (state BlockState) String() string {
@@ -31,8 +31,8 @@ func (state BlockState) String() string {
 		return "SuspectBlock"
 	case PrecommitBlock:
 		return "PrecommitBlock"
-	case CommiitedBlock:
-		return "CommiitedBlock"
+	case CommittedBlock:
+		return "CommittedBlock"
 	default:
 		return "UnkownTypeBlock"
 	}

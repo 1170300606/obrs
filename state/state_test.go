@@ -59,15 +59,15 @@ func TestNewBranch(t *testing.T) {
 	assert.Equal(t, blocks[5], actual)
 
 	// 如果block[4] block[5]都提交了 下一轮应该返回block[3]
-	blocks[1].BlockState = types.CommiitedBlock
-	blocks[4].BlockState = types.CommiitedBlock
-	blocks[5].BlockState = types.CommiitedBlock
+	blocks[1].BlockState = types.CommittedBlock
+	blocks[4].BlockState = types.CommittedBlock
+	blocks[5].BlockState = types.CommittedBlock
 	actual, blist = genState.NewBranch()
 	assert.Equal(t, 1, len(blist))
 	assert.Equal(t, blocks[3], actual)
 
 	// 如果block[3]提交 应该返回block[6]
-	blocks[3].BlockState = types.CommiitedBlock
+	blocks[3].BlockState = types.CommittedBlock
 	actual, blist = genState.NewBranch()
 	assert.Equal(t, 1, len(blist))
 	assert.Equal(t, blocks[6], actual)

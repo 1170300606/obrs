@@ -92,7 +92,7 @@ func (tree *BlockTree) GetBlockByFilter(hash []byte, filter FilterFunc) []*Block
 		return res
 	}
 
-	for cur := endBlock; cur != nil && cur.data.BlockState != CommiitedBlock; cur = cur.parent {
+	for cur := endBlock; cur != nil && cur.data.BlockState != CommittedBlock; cur = cur.parent {
 		if filter(cur.data) {
 			res = append(res, cur.data)
 		}

@@ -163,7 +163,7 @@ func (state *State) UpdateState(block *types.Block) {
 				block.Commit = &types.Commit{}
 			}
 
-			if block.BlockState == types.CommiitedBlock {
+			if block.BlockState == types.CommittedBlock {
 				// 已经提交的区块
 				continue
 			}

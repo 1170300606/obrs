@@ -722,9 +722,7 @@ func (cs *ConsensusState) sendInternalMessage(mi msgInfo) {
 
 // ============ Public RPC function
 func (cs *ConsensusState) GetAllBlocks() []*types.Block {
-	// BUG 是否会有锁竞争现象
 	committedBlocks := cs.GetCommittedBlocks()
-
 	uncommittedBlocks := cs.GetUnCommittedBlocks()
 
 	return append(committedBlocks, uncommittedBlocks...)
@@ -735,7 +733,9 @@ func (cs *ConsensusState) GetCommittedBlocks() []*types.Block {
 
 	// 从block tree中加载已经commit的区块
 	cs.state.BlockTree.ForEach(func(block *types.Block) {
-		blocks = append(blocks, block)
+		if block.BlockState == types.CommittedBlock {
+			blocks = append(blocks, block)
+		}
 	})
 	return blocks
 }

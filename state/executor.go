@@ -102,7 +102,7 @@ func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (St
 			//	"tx", tx)
 		}
 		// TODO 检查交易执行的状态 如果有一个区块交易执行失败，直接结束本轮提交，是否需要rollback待定
-		block.BlockState = types.CommiitedBlock
+		block.BlockState = types.CommittedBlock
 		//block.ResultHash = newhash
 		toRemovesTxs.Append(block.Txs)
 	}
