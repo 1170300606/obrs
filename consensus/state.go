@@ -314,7 +314,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 		// 成功切换到新的slot，更新状态到RoundStepSLot
 		cs.updateStep(cstype.RoundStepSlot)
 	}()
-	cs.Logger.Info("enter new slot", "slot", slot)
+	cs.Logger.Info("enter new slot", "slot", slot, "startTime", cs.curSlotStartTime)
 
 	// 完成切换到slot ？是否需要先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
