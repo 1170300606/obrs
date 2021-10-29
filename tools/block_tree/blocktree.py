@@ -4,7 +4,8 @@ import requests
 import sys
 
 def block_tree(url="http://127.0.0.1:26657/block_tree"):
-    jdata = requests.get(url).json()
+    odata = requests.get(url)
+    jdata = odata.json()
     try:
         blocks = jdata["result"]["blocks"]
         existed = {}
@@ -40,6 +41,8 @@ proposer_addr:\\n
             graph += "[{}] -> [{}]\n".format(prev_slot, slot)
         return head+graph
     except:
+        print(odata)
+        print(jdata)
         return None
         
 def output(data):

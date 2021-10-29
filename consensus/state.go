@@ -673,13 +673,13 @@ func (cs *ConsensusState) reviseSlotTime() {
 	cs.Logger.Debug("[test] time", "curStart", cs.curSlotStartTime, "baseStart", cs.state.LastCommitedBlock.SlotStartTime, "revisedStart", slotStartTime, "revisedEnd", slotEndTime)
 	if time.Now().After(slotEndTime) {
 		// 如果当前时间已经超过校正后的结束时间 跳过该轮校正
-		cs.Logger.Debug("[test] current time is after advised slot end time. pass")
+		cs.Logger.Info("current time is after advised slot end time. pass")
 		return
 	}
 	newTimeout := slotEndTime.Sub(time.Now())
 	cs.curSlotStartTime = slotStartTime
 	cs.slotClock.ResetClock(newTimeout)
-	cs.Logger.Info("ready to revise slot time", "old", cs.curSlotStartTime, "new", slotStartTime, "new timeout", newTimeout)
+	cs.Logger.Info("revised slot time", "oldBase", cs.curSlotStartTime, "newBase", slotStartTime, "newTimeout", newTimeout)
 }
 
 func (cs *ConsensusState) updateSlot(slot types.LTime) {
