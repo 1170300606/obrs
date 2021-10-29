@@ -2,6 +2,7 @@ package node
 
 import (
 	"chainbft_demo/consensus"
+	"chainbft_demo/libs/metric"
 	"chainbft_demo/mempool"
 	"chainbft_demo/privval"
 	"chainbft_demo/rpc"
@@ -51,9 +52,12 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	// 手动设置自己的验证者信息
 	genState.Validator = validator
 
+	// create metric set
+	metricSet := createMetricSet()
+
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
-	memR, mem := createMempoolReactor(config.Mempool, memlogger)
+	memR, mem := createMempoolReactor(config.Mempool, memlogger, metricSet)
 	memR.SetLogger(memlogger)
 
 	// 生成block执行器
@@ -100,6 +104,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 		consensusReactor: conR,
 		mempool:          mem,
 		mempoolReactor:   memR,
+		metricSet:        metricSet,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -127,6 +132,10 @@ func loadStateFromFile(stateFile string) (state.State, error) {
 	return genstate, nil
 }
 
+func createMetricSet() *metric.MetricSet {
+	return metric.NewMetricSet()
+}
+
 func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	genState state.State,
 	blockExec state.BlockExecutor, blockStore store.Store,
@@ -147,8 +156,8 @@ func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	return conR, conS
 }
 
-func createMempoolReactor(config *cfg.MempoolConfig, logger log.Logger) (*mempool.Reactor, mempool.Mempool) {
-	mem := mempool.NewListMempool(config)
+func createMempoolReactor(config *cfg.MempoolConfig, logger log.Logger, metric *metric.MetricSet) (*mempool.Reactor, mempool.Mempool) {
+	mem := mempool.NewListMempool(config, mempool.RegisteryMetric(metric))
 	memR := mempool.NewReactor(config, mem)
 	memR.SetLogger(logger)
 
@@ -258,6 +267,8 @@ type Node struct {
 	mempoolReactor   *mempool.Reactor
 
 	rpcListeners []net.Listener
+
+	metricSet *metric.MetricSet
 }
 
 type Option func(*Node)
@@ -313,6 +324,7 @@ func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener,
 	rpc.SetEnvironment(&rpc.Environment{
 		Mempool:   mem,
 		Consensus: n.conS,
+		MetricSet: n.metricSet,
 	})
 
 	config := server.DefaultConfig()
