@@ -70,7 +70,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	conR, conS := createConsensusReactor(config.Consensus, conlogger,
 		genState,
 		blockExec, nil,
-		privValidator,
+		privValidator, metricSet,
 	)
 	conR.SetLogger(conlogger)
 
@@ -139,7 +139,8 @@ func createMetricSet() *metric.MetricSet {
 func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	genState state.State,
 	blockExec state.BlockExecutor, blockStore store.Store,
-	privKey types.PrivValidator) (*consensus.Reactor, *consensus.ConsensusState) {
+	privKey types.PrivValidator,
+	metric *metric.MetricSet) (*consensus.Reactor, *consensus.ConsensusState) {
 
 	// 创建consensus状态机
 	conS := consensus.NewDefaultConsensusState(
@@ -147,6 +148,7 @@ func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 		privKey, genState.Validators,
 		blockExec, blockStore,
 		genState,
+		consensus.RegisterMetric(metric),
 	)
 
 	// create Consensus reactor

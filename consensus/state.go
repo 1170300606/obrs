@@ -2,6 +2,7 @@ package consensus
 
 import (
 	cstype "chainbft_demo/consensus/types"
+	"chainbft_demo/libs/metric"
 	"chainbft_demo/state"
 	"chainbft_demo/store"
 	"chainbft_demo/types"
@@ -63,6 +64,8 @@ type ConsensusState struct {
 	// slot不一致的临时补救
 	futureProposal   map[types.LTime]types.Proposal
 	curSlotStartTime time.Time // 当前slot启动的绝对时间
+
+	metric *consensusMetric
 }
 
 type ConsensusOption func(*ConsensusState)
@@ -75,6 +78,7 @@ func NewDefaultConsensusState(
 	blockExec state.BlockExecutor,
 	blockStore store.Store,
 	state state.State,
+	options ...ConsensusOption,
 ) *ConsensusState {
 	cs := NewConsensusState(
 		config,
@@ -82,8 +86,8 @@ func NewDefaultConsensusState(
 		blockExec,
 		blockStore,
 		state,
-		SetValidtorSet(Validators),
-		SetValidtor(privVal),
+		append([]ConsensusOption{SetValidtorSet(Validators),
+			SetValidtor(privVal)}, options...)...,
 	)
 	cs.decideProposal = cs.defaultProposal
 	cs.setProposal = cs.defaultSetProposal
@@ -117,6 +121,7 @@ func NewConsensusState(
 		eventMsgQueue:    make(chan msgInfo),
 		eventSwitch:      events.NewEventSwitch(),
 		futureProposal:   make(map[types.LTime]types.Proposal),
+		metric:           newConsensusMetric(),
 	}
 
 	cs.BaseService = *service.NewBaseService(nil, "CONSENSUS", cs)
@@ -151,6 +156,12 @@ func SetValidtor(validator types.PrivValidator) ConsensusOption {
 func SetValidtorSet(validatorSet *types.ValidatorSet) ConsensusOption {
 	return func(cs *ConsensusState) {
 		cs.Validators = validatorSet
+	}
+}
+
+func RegisterMetric(metricSet *metric.MetricSet) ConsensusOption {
+	return func(cs *ConsensusState) {
+		metricSet.SetMetrics("CONSENSUS", cs.metric)
 	}
 }
 

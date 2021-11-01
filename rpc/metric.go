@@ -19,7 +19,7 @@ func JSONMetrics(ctx *rpctypes.Context, label string) (*ResultMetrics, error) {
 		labels = env.MetricSet.GetAlllabels()
 	}
 
-	fmt.Println(*env.MetricSet)
+	fmt.Println(label)
 	fmt.Println(labels)
 	for _, l := range labels {
 		item := env.MetricSet.GetMetrics(l)
