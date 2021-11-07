@@ -176,7 +176,7 @@ func (memR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	err = memR.mempool.CheckTx(msg.Tx, txInfo)
 	if err != nil {
-		memR.Logger.Info("Could not check tx", "tx", txID(msgBytes), "err", err)
+		memR.Logger.Info("Could not check tx", "tx", TxKey(msg.Tx), "err", err)
 	}
 }
 
@@ -244,7 +244,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 // bytes data => []types.Tx
 func (memR *Reactor) decodeMsg(data []byte) (TxsMessage, error) {
 	// TODO 确定编码协议 proto？
-	tx := types.Tx{}
+	tx := types.NewTx()
 	json.Unmarshal(data, &tx)
 	return TxsMessage{tx}, nil
 }

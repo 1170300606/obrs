@@ -78,10 +78,10 @@ func (conR *Reactor) SetLogger(l log.Logger) {
 
 func (conR *Reactor) OnStart() error {
 	genblock := conR.consensus.state.GenesisBlock()
-	if genblock.Ctime.After(time.Now()) {
+	if genblock.ProposalTime.After(time.Now()) {
 		// 如果当前时间早于定义的时间
-		conR.Logger.Info("wait genesis time", "time", genblock.Ctime, "sleep", genblock.Ctime.Sub(time.Now()))
-		time.Sleep(genblock.Ctime.Sub(time.Now()))
+		conR.Logger.Info("wait genesis time", "time", genblock.ProposalTime, "sleep", genblock.ProposalTime.Sub(time.Now()))
+		time.Sleep(genblock.ProposalTime.Sub(time.Now()))
 	}
 
 	conR.Logger.Info("Consensus Reactor started.")

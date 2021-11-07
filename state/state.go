@@ -118,7 +118,7 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 
 	blocks := state.UnCommitBlocks.Blocks()
 	idx := -1
-	// 从后往前找到第一个可以提交的区块
+	// 从后往前找到第一个可以提交的区块，且他们保持在同一个tree的分支上 TODO
 	for i := len(blocks) - 1; i >= 0; i-- {
 		if blocks[i].Commit == nil {
 			continue
@@ -154,10 +154,10 @@ func (state *State) UpdateState(block *types.Block) {
 			}
 
 			// TODO 首先检验evidence的正确性 - 签名的正确性
-			//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
-			//	// evidence验证错误 跳过
-			//	continue
-			//}
+			if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
+				// evidence验证错误 跳过
+				continue
+			}
 
 			if block.Commit == nil {
 				block.Commit = &types.Commit{}
@@ -171,7 +171,11 @@ func (state *State) UpdateState(block *types.Block) {
 			block.VoteQuorum = evidence
 			// 更新blockstate
 			if evidence.Type == types.SupportQuorum {
-				block.BlockState = types.PrecommitBlock
+				if block.BlockState != types.PrecommitBlock {
+					// 如果更改区块状态为precommit
+					block.BlockState = types.PrecommitBlock
+					block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
+				}
 			} else if evidence.Type == types.AgainstQuorum {
 				block.BlockState = types.ErrorBlock
 			}

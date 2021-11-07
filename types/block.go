@@ -11,12 +11,18 @@ import (
 type BlockState uint8
 
 const (
+	// block status
 	DefaultBlock   = BlockState(0)  // 空白区块 该轮slot尚未收到任何提案
 	ProposalBlock  = BlockState(1)  // 提案状态 尚未收到任何投票的区块，即提案
 	ErrorBlock     = BlockState(2)  // 错误的区块，收到against-quorum的区块
 	SuspectBlock   = BlockState(3)  // 没有收到任意quorum的区块
 	PrecommitBlock = BlockState(4)  // supprot-quorum的区块
 	CommittedBlock = BlockState(20) // 处于PrecommitBlock的区块有suppror-quorum的后代区块
+
+	// time label
+	BlockProposalTime  = "proposal_time"
+	BlockPrecommitTime = "precommit_time"
+	BlockCommitTime    = "commit_time"
 )
 
 func (state BlockState) String() string {
@@ -90,7 +96,7 @@ type Header struct {
 	Slot          LTime      `json:"slot"`
 	SlotStartTime time.Time  `json:"slot_start_time"` // 临时方案，添加一个切换到新slot的时间，来多个节点之间调整校正
 	BlockState    BlockState `json:"block_state"`     // 不参与hash的计算
-	Ctime         time.Time  `json:"create_time"`     // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
+	ProposalTime  time.Time  `json:"proposal_time"`   // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
 
 	// 数据hash
 	LastBlockHash  tmbytes.HexBytes `json:last_block_hash`   // 上一个区块的信息
@@ -101,6 +107,10 @@ type Header struct {
 
 	BlockHash tmbytes.HexBytes `json:"block_hash"` // 当前区块的hash
 	Signature tmbytes.HexBytes `json:"signature"`  // 区块的签名，sign {chainID}{slot}{LastBlockHash}{TxsHash}{ValidatorsHash}{ResultHash}
+
+	// timestamp，调用computeTime之前，保存的是对应状态的时间戳
+	BlockPrecommitTime int64 `json:"precommit_time"` // 达成precommit状态的耗时
+	BlockCommitTime    int64 `json:"commit_time"`    // 达成precommit状态的耗时
 }
 
 func (h *Header) Fill(
@@ -137,6 +147,21 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		})
 	}
 	return h.BlockHash
+}
+
+func (h *Header) CalculateTime() {
+	precommitTime := h.BlockPrecommitTime - h.ProposalTime.UnixNano()
+	commitTime := h.BlockCommitTime - h.BlockPrecommitTime
+	h.BlockPrecommitTime = precommitTime
+	h.BlockCommitTime = commitTime
+}
+
+func (h *Header) MarkTime(s string, t int64) {
+	if s == BlockCommitTime {
+		h.BlockCommitTime = t
+	} else if s == BlockPrecommitTime {
+		h.BlockPrecommitTime = t
+	}
 }
 
 type Data struct {

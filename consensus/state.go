@@ -3,7 +3,6 @@ package consensus
 import (
 	cstype "chainbft_demo/consensus/types"
 	"chainbft_demo/state"
-	"chainbft_demo/store"
 	"chainbft_demo/types"
 	"errors"
 	"fmt"
@@ -39,7 +38,7 @@ type ConsensusState struct {
 	blockExec state.BlockExecutor
 
 	// 区块存储器
-	blockStore store.Store
+	blockStore state.Store
 
 	// 区块逻辑时钟
 	slotClock SlotClock
@@ -73,7 +72,7 @@ func NewDefaultConsensusState(
 	privVal types.PrivValidator,
 	Validators *types.ValidatorSet,
 	blockExec state.BlockExecutor,
-	blockStore store.Store,
+	blockStore state.Store,
 	state state.State,
 ) *ConsensusState {
 	cs := NewConsensusState(
@@ -95,7 +94,7 @@ func NewConsensusState(
 	config *config.ConsensusConfig,
 	initSlot types.LTime,
 	blockExec state.BlockExecutor,
-	blockStore store.Store,
+	blockStore state.Store,
 	state state.State,
 	options ...ConsensusOption,
 ) *ConsensusState {
@@ -383,6 +382,7 @@ func (cs *ConsensusState) enterApply() {
 
 		if quorum.Type == types.SupportQuorum {
 			cs.Proposal.Block.BlockState = types.PrecommitBlock
+			cs.Proposal.Block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
 
 			// 区块转为precommit block，为block里面的support-quorum指向的区块生成commit
 			if cs.Proposal.Evidences != nil {
