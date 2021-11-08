@@ -3,7 +3,6 @@ package state
 import (
 	"bytes"
 	mempl "chainbft_demo/mempool"
-	"chainbft_demo/store"
 	"chainbft_demo/types"
 	"errors"
 	"github.com/tendermint/tendermint/libs/log"
@@ -21,30 +20,42 @@ type BlockExecutor interface {
 	SetLogger(logger log.Logger)
 }
 
-func NewBlockExecutor(mempool mempl.Mempool) BlockExecutor {
-	blockexec := &blockExcutor{
+type BlockExecutorOption func(excutor *blockExecutor)
+
+func NewBlockExecutor(mempool mempl.Mempool, options ...BlockExecutorOption) BlockExecutor {
+	blockexec := &blockExecutor{
 		mempool: mempool,
+	}
+
+	for _, option := range options {
+		option(blockexec)
 	}
 
 	return blockexec
 }
 
-type blockExcutor struct {
+func SetBlockExecutorDB(inner Store) BlockExecutorOption {
+	return func(excutor *blockExecutor) {
+		excutor.stateDB = inner
+	}
+}
+
+type blockExecutor struct {
 	mempool mempl.Mempool
 
-	db store.Store
+	stateDB Store
 
 	logger log.Logger
 }
 
 // SetLogger implements BlockExecutor
-func (exec *blockExcutor) SetLogger(logger log.Logger) {
+func (exec *blockExecutor) SetLogger(logger log.Logger) {
 	exec.logger = logger
 }
 
 // ApplyBlock implements BlockExecutor
 // apply上一轮slot的proposal，同时会尝试更新pre-commit区块
-func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State, error) {
+func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State, error) {
 	// 首先验证区块是否合法，不合法直接返回愿状态
 	if err := exec.validateBlock(state, proposal); err != nil {
 		return state, ErrInvalidBlock(err)
@@ -66,73 +77,57 @@ func (exec *blockExcutor) ApplyBlock(state State, proposal *types.Block) (State,
 	exec.logger.Debug("prepare to commit blocks", "size", len(toCommitBlock), "toCommitBlocks", toCommitBlock)
 
 	// 正式提交交易，在这里可能不止提交一个交易，如果提交成功后还要负责删除mempool中的交易
-	state, err := exec.Commit(state, toCommitBlock)
+	state, _, err := exec.Commit(state, toCommitBlock)
 	if err != nil {
 		return state, err
-	}
-
-	// 更新state的状态
-	_ = state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
-	state.LastBlockTime = time.Now()
-	if len(toCommitBlock) > 0 {
-		// 有提交的区块 更新state的slot
-		lastBlock := toCommitBlock[len(toCommitBlock)-1]
-		state.LastBlockSlot = lastBlock.Slot
-		state.LastBlockHash = lastBlock.BlockHash
-		state.LastResultsHash = lastBlock.ResultHash
-		state.LastBlockTime = lastBlock.Ctime
-		state.LastCommitedBlock = lastBlock
 	}
 
 	return state, err
 }
 
-// 按照list的顺序提交多个区块，是否要保证原子性待定
-// 如果提交成功后更新mempool
-func (exec *blockExcutor) Commit(state State, toCommitblocks []*types.Block) (State, error) {
-	toRemovesTxs := types.Txs{}
-	// 假设都能全部提交成功
+// TODO 当有多个可提交区块的时候，如何处理？
+// 函数的语义：在当前state下，尽力提交所有可以提交的区块，如果提交成功后更新mempool
+func (exec *blockExecutor) Commit(state State, toCommitblocks []*types.Block) (newState State, lastCommittedBlock *types.Block, err error) {
+	newState = state
 	for idx, block := range toCommitblocks {
+		// TODO 当上一轮的区块提交失败时，是否要继续提交？
 		exec.logger.Debug("commit block", "state", state, "idx", idx)
-		for _, tx := range block.Txs {
-			// commit tx
-			tx.Hash()
-			//exec.logger.Debug(
-			//	"commit tx",
-			//	"tx", tx)
+
+		// step 1 提交到状态数据库
+		resulthash, err := exec.stateDB.CommitBlock(state, block)
+		if err != nil {
+			exec.logger.Error("commit block failed.", "err", err, "block", block.Hash())
+			continue
 		}
-		// TODO 检查交易执行的状态 如果有一个区块交易执行失败，直接结束本轮提交，是否需要rollback待定
-		block.BlockState = types.CommittedBlock
-		//block.ResultHash = newhash
-		toRemovesTxs.Append(block.Txs)
+
+		// step 2 更新mempool，删除交易
+		exec.mempool.Lock()
+
+		if err := exec.mempool.Update(0, block.Txs); err != nil {
+			exec.logger.Error("Update tx in mempool failed.", "reason", err)
+			exec.mempool.Unlock()
+			continue
+		}
+		exec.mempool.Unlock()
+
+		// step 3 更新state
+		tmpState := newState.Copy()
+		tmpState.CommitBlock(block)
+		tmpState.LastResultsHash = resulthash
+		tmpState.LastBlockSlot = block.Slot
+		tmpState.LastBlockHash = block.BlockHash
+		tmpState.LastBlockTime = block.ProposalTime
+		tmpState.LastCommitedBlock = block
+
+		newState = tmpState
+		lastCommittedBlock = block
 	}
 
-	// 提交成功后更新mempool，首先加锁
-	exec.mempool.Lock()
-	if err := exec.mempool.Update(0, toRemovesTxs); err != nil {
-		exec.logger.Error("Update tx in mempool failed.", "reason", err)
-	}
-	exec.mempool.Unlock()
-
-	newState := state.Copy()
-	// 更新precommit blocks&suspected blocks
-	exec.logger.Debug("to remove blocks.", "blocks", toCommitblocks, "size", newState.UnCommitBlocks.Size())
-	newState.CommitBlocks(toCommitblocks)
-	exec.logger.Debug("after remove.", "size", newState.UnCommitBlocks.Size())
-
-	// TODO 更新提交后的merkle root
-	newState.LastResultsHash = newState.LastResultsHash
-
-	// 将Last字段更新为最后一个提交的区块的信息
-	if len(toCommitblocks) > 0 {
-		newState.LastBlockHash = toCommitblocks[len(toCommitblocks)-1].BlockHash
-	}
-
-	return newState, nil
+	return
 }
 
 // 从mempool中打包交易
-func (exec *blockExcutor) CreateProposal(state State, curSlot types.LTime) *types.Proposal {
+func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *types.Proposal {
 	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
 	parentBlock, precommitBlocks := state.NewBranch()
 
@@ -163,7 +158,7 @@ func (exec *blockExcutor) CreateProposal(state State, curSlot types.LTime) *type
 }
 
 // 根绝当前的state验证一个区块是否合法
-func (exec *blockExcutor) validateBlock(state State, block *types.Block) error {
+func (exec *blockExecutor) validateBlock(state State, block *types.Block) error {
 	// 先检验区块基本的信息是否正确
 	if err := block.ValidteBasic(); err != nil {
 		return err

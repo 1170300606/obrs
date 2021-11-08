@@ -51,6 +51,12 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	// 手动设置自己的验证者信息
 	genState.Validator = validator
 
+	// 创建数据库
+	innerDB, err := createLevelDB(&config.BaseConfig, logger.With("module", "KVDB"))
+	if err != nil {
+		return nil, err
+	}
+
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
 	memR, mem := createMempoolReactor(config.Mempool, memlogger)
@@ -58,7 +64,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 
 	// 生成block执行器
 	execLogger := logger.With("module", "state")
-	blockExec := state.NewBlockExecutor(mem)
+	blockExec := state.NewBlockExecutor(mem, state.SetBlockExecutorDB(innerDB))
 	blockExec.SetLogger(execLogger)
 
 	// create Consensus reactor
@@ -127,9 +133,14 @@ func loadStateFromFile(stateFile string) (state.State, error) {
 	return genstate, nil
 }
 
+func createLevelDB(config *cfg.BaseConfig, logger log.Logger) (state.Store, error) {
+	db := store.NewKVStore("state", config.DBDir(), logger)
+	return db, nil
+}
+
 func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	genState state.State,
-	blockExec state.BlockExecutor, blockStore store.Store,
+	blockExec state.BlockExecutor, blockStore state.Store,
 	privKey types.PrivValidator) (*consensus.Reactor, *consensus.ConsensusState) {
 
 	// 创建consensus状态机
