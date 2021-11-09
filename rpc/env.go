@@ -3,6 +3,7 @@ package rpc
 import (
 	"chainbft_demo/consensus"
 	"chainbft_demo/mempool"
+	"chainbft_demo/state"
 )
 
 var (
@@ -16,4 +17,5 @@ func SetEnvironment(e *Environment) {
 type Environment struct {
 	Mempool   mempool.Mempool
 	Consensus *consensus.ConsensusState
+	Store     state.Store
 }

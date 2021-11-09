@@ -87,6 +87,7 @@ func (mem *ListMempool) tmpInitAccount(name string) {
 }
 
 func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
+	mem.logger.Error("receive tx", "tx", tx)
 	txSize := int(tx.ComputeSize())
 	if err := mem.isFull(txSize); err != nil {
 		return err
@@ -170,6 +171,7 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 		memTx.tx.MarkTime(types.MempoolReap, time.Now().UnixNano())
 	}
 	mem.logger.Debug("reapped all txs", "size", len(txs))
+	mem.logger.Error("reap all txs", "size", len(txs), "txs", txs)
 	return txs
 }
 
