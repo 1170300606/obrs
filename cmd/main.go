@@ -35,6 +35,7 @@ func main() {
 		cmd.ShowNodeIDCmd,
 		cmd.ShowValidatorCmd,
 		cmd.GenGenesisCmd,
+		cmd.InitDBCmd,
 		cmd.NewRunNodeCmd(nodeFunc),
 	)
 

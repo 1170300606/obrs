@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	tableAccount  = "accout"
-	tableSaving   = "saving"
-	tableChecking = "checking"
+	TableAccount  = "accout"
+	TableSaving   = "saving"
+	TableChecking = "checking"
 )
 
 func NewKVStore(name, dir string, logger log.Logger) *KVStore {
@@ -98,7 +98,7 @@ func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
 		if err != nil {
 			return err
 		}
-		return batch.Set(genKey(tableChecking, customID), int2byte(preBal+value))
+		return batch.Set(GenKey(TableChecking, customID), Int2byte(preBal+value))
 
 	case types.SBTransactionSavingTx:
 		name := sbtx.Args[0]
@@ -114,7 +114,7 @@ func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
 		if err != nil {
 			return err
 		}
-		return batch.Set(genKey(tableSaving, customID), int2byte(preBal+value))
+		return batch.Set(GenKey(TableSaving, customID), Int2byte(preBal+value))
 
 	case types.SBAmalgamateTx:
 		n1 := sbtx.Args[0]
@@ -138,10 +138,10 @@ func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
 			return err
 		}
 
-		batch.Set(genKey(tableChecking, customID2), int2byte(preBal+c1Total))
+		batch.Set(GenKey(TableChecking, customID2), Int2byte(preBal+c1Total))
 
-		batch.Set(genKey(tableSaving, customID1), int2byte(0))
-		batch.Set(genKey(tableChecking, customID1), int2byte(0))
+		batch.Set(GenKey(TableSaving, customID1), Int2byte(0))
+		batch.Set(GenKey(TableChecking, customID1), Int2byte(0))
 
 		return nil
 	case types.SBWriteCheckingTx:
@@ -170,7 +170,7 @@ func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
 			preBal -= value
 		}
 
-		return batch.Set(genKey(tableChecking, customID), int2byte(preBal))
+		return batch.Set(GenKey(TableChecking, customID), Int2byte(preBal))
 
 	default:
 		return errors.New(string("wrong small bank tx type(" + sbtx.TxType + ")"))
@@ -179,30 +179,30 @@ func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
 }
 
 func (kv *KVStore) getCustomID(name string) (int, error) {
-	accountKey := genKey(tableAccount, name)
+	accountKey := GenKey(TableAccount, name)
 	customID, err := kv.kvDB.Get(accountKey)
 	if err != nil {
 		return -1, err
 	}
-	return byte2int(customID), nil
+	return Byte2int(customID), nil
 }
 
 func (kv *KVStore) getCheckingBal(customID int) (int, error) {
-	checkingkey := genKey(tableChecking, customID)
+	checkingkey := GenKey(TableChecking, customID)
 	bal, err := kv.kvDB.Get(checkingkey)
 	if err != nil {
 		return -1, err
 	}
-	return byte2int(bal), nil
+	return Byte2int(bal), nil
 }
 
 func (kv *KVStore) getSavingBal(customID int) (int, error) {
-	savingKey := genKey(tableSaving, customID)
+	savingKey := GenKey(TableSaving, customID)
 	bal, err := kv.kvDB.Get(savingKey)
 	if err != nil {
 		return -1, err
 	}
-	return byte2int(bal), nil
+	return Byte2int(bal), nil
 }
 
 func (kv *KVStore) getTotalBal(customID int) (int, error) {
@@ -219,7 +219,7 @@ func (kv *KVStore) getTotalBal(customID int) (int, error) {
 	return savingbal + checkingbal, nil
 }
 
-func genKey(table string, primaryKey interface{}) []byte {
+func GenKey(table string, primaryKey interface{}) []byte {
 	buffer := new(bytes.Buffer)
 	buffer.WriteString(table)
 	switch primaryKey.(type) {
@@ -235,12 +235,12 @@ func genKey(table string, primaryKey interface{}) []byte {
 	return buffer.Bytes()
 }
 
-func byte2int(src []byte) int {
+func Byte2int(src []byte) int {
 	v, _ := strconv.Atoi(string(src))
 	return v
 }
 
-func int2byte(src int) []byte {
+func Int2byte(src int) []byte {
 	return []byte(strconv.Itoa(src))
 }
 
@@ -249,11 +249,11 @@ func (kv *KVStore) GetDB() tmdb.DB {
 }
 
 func (kv *KVStore) InitAccount(name string, saving int, checking int) error {
-	accountKey := genKey(tableAccount, name)
+	accountKey := GenKey(TableAccount, name)
 	atomic.AddInt32(&kv.increasingID, 1)
-	customID := int2byte(int(kv.increasingID - 1))
+	customID := Int2byte(int(kv.increasingID - 1))
 	kv.kvDB.Set(accountKey, customID)
-	kv.kvDB.Set(genKey(tableChecking, customID), int2byte(checking))
-	kv.kvDB.Set(genKey(tableSaving, customID), int2byte(saving))
+	kv.kvDB.Set(GenKey(TableChecking, customID), Int2byte(checking))
+	kv.kvDB.Set(GenKey(TableSaving, customID), Int2byte(saving))
 	return nil
 }

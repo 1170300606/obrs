@@ -10,12 +10,12 @@ import (
 )
 
 func initaccount(db tmdb.DB, name string, c, s int) int {
-	accountKey := genKey(tableAccount, name)
-	customID := int2byte(rand.Int())
+	accountKey := GenKey(TableAccount, name)
+	customID := Int2byte(rand.Int())
 	db.Set(accountKey, customID)
-	db.Set(genKey(tableChecking, customID), int2byte(c))
-	db.Set(genKey(tableSaving, customID), int2byte(s))
-	return byte2int(customID)
+	db.Set(GenKey(TableChecking, customID), Int2byte(c))
+	db.Set(GenKey(TableSaving, customID), Int2byte(s))
+	return Byte2int(customID)
 }
 
 func TestDbOpration(t *testing.T) {
@@ -36,16 +36,16 @@ func TestDbOpration(t *testing.T) {
 
 	ite, _ := testdb.Iterator(nil, nil)
 	for ite.Valid() {
-		t.Log(string(ite.Key()), byte2int(ite.Value()))
+		t.Log(string(ite.Key()), Byte2int(ite.Value()))
 		ite.Next()
 	}
 }
 
 func TestUtils(t *testing.T) {
-	assert.Equal(t, 10, byte2int(int2byte(10)))
-	t.Log(string(genKey(tableAccount, "TOMMO")))
-	t.Log(string(genKey(tableSaving, 100)))
-	t.Log(string(genKey(tableChecking, 200)))
+	assert.Equal(t, 10, Byte2int(Int2byte(10)))
+	t.Log(string(GenKey(TableAccount, "TOMMO")))
+	t.Log(string(GenKey(TableSaving, 100)))
+	t.Log(string(GenKey(TableChecking, 200)))
 }
 
 func TestSBDepositChecking(t *testing.T) {
