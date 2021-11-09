@@ -17,6 +17,7 @@ import (
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	"github.com/tendermint/tendermint/version"
+	tmdb "github.com/tendermint/tm-db"
 	"net"
 	"net/http"
 	"strings"
@@ -59,8 +60,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
-	memR, mem := createMempoolReactor(config.Mempool, memlogger)
-	memR.SetLogger(memlogger)
+	memR, mem := createMempoolReactor(config.Mempool, memlogger, innerDB.GetDB())
 
 	// 生成block执行器
 	execLogger := logger.With("module", "state")
@@ -106,6 +106,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 		consensusReactor: conR,
 		mempool:          mem,
 		mempoolReactor:   memR,
+		storeDB:          innerDB,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -158,8 +159,12 @@ func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	return conR, conS
 }
 
-func createMempoolReactor(config *cfg.MempoolConfig, logger log.Logger) (*mempool.Reactor, mempool.Mempool) {
-	mem := mempool.NewListMempool(config)
+func createMempoolReactor(
+	config *cfg.MempoolConfig,
+	logger log.Logger,
+	db tmdb.DB,
+) (*mempool.Reactor, mempool.Mempool) {
+	mem := mempool.NewListMempool(config, mempool.SetStateDB(db))
 	memR := mempool.NewReactor(config, mem)
 	memR.SetLogger(logger)
 
@@ -267,6 +272,7 @@ type Node struct {
 	consensusReactor *consensus.Reactor
 	mempool          mempool.Mempool
 	mempoolReactor   *mempool.Reactor
+	storeDB          state.Store
 
 	rpcListeners []net.Listener
 }
@@ -285,7 +291,7 @@ func (n *Node) OnStart() error {
 	// start RPC server if listenAddr is not empty
 	if n.config.RPC.ListenAddress != "" {
 		RPClogger := n.Logger.With("module", "RPC")
-		listeners, err := n.startRPC(n.mempool, RPClogger)
+		listeners, err := n.startRPC(RPClogger)
 		if err != nil {
 			return errors.New("start RPC server failed. reason: " + err.Error())
 		}
@@ -319,11 +325,12 @@ func (n *Node) OnStart() error {
 	return nil
 }
 
-func (n *Node) startRPC(mem mempool.Mempool, logger log.Logger) ([]net.Listener, error) {
+func (n *Node) startRPC(logger log.Logger) ([]net.Listener, error) {
 	// setup rpc enviroment
 	rpc.SetEnvironment(&rpc.Environment{
-		Mempool:   mem,
+		Mempool:   n.mempool,
 		Consensus: n.conS,
+		Store:     n.storeDB,
 	})
 
 	config := server.DefaultConfig()

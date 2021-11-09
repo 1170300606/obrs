@@ -9,7 +9,10 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	tmdb "github.com/tendermint/tm-db"
 	leveldb "github.com/tendermint/tm-db/goleveldb"
+	"math"
+	"math/rand"
 	"strconv"
+	"sync/atomic"
 )
 
 const (
@@ -28,13 +31,15 @@ func NewKVStore(name, dir string, logger log.Logger) *KVStore {
 
 //
 func NewKVStoreWithDB(kvdb tmdb.DB, logger log.Logger) *KVStore {
-	return &KVStore{kvDB: kvdb, logger: logger}
+	return &KVStore{kvDB: kvdb, logger: logger, increasingID: rand.Int31n(math.MaxInt32)}
 }
 
 type KVStore struct {
 	kvDB tmdb.DB
 
 	logger log.Logger
+
+	increasingID int32
 }
 
 // TODO
@@ -237,4 +242,18 @@ func byte2int(src []byte) int {
 
 func int2byte(src int) []byte {
 	return []byte(strconv.Itoa(src))
+}
+
+func (kv *KVStore) GetDB() tmdb.DB {
+	return kv.kvDB
+}
+
+func (kv *KVStore) InitAccount(name string, saving int, checking int) error {
+	accountKey := genKey(tableAccount, name)
+	atomic.AddInt32(&kv.increasingID, 1)
+	customID := int2byte(int(kv.increasingID - 1))
+	kv.kvDB.Set(accountKey, customID)
+	kv.kvDB.Set(genKey(tableChecking, customID), int2byte(checking))
+	kv.kvDB.Set(genKey(tableSaving, customID), int2byte(saving))
+	return nil
 }

@@ -6,6 +6,7 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
+	tmdb "github.com/tendermint/tm-db"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -52,6 +53,8 @@ type ListMempool struct {
 	// This reduces the pressure on the proxyApp.
 	cache txCache
 
+	smallBank tmdb.DB // for small bank test
+
 	logger log.Logger
 }
 
@@ -63,8 +66,24 @@ func SetPreCheck(precheck PreCheckFunc) ListMempoolOption {
 	}
 }
 
+func SetStateDB(db tmdb.DB) ListMempoolOption {
+	return func(mem *ListMempool) {
+		mem.smallBank = db
+	}
+}
+
 func (mem *ListMempool) SetLogger(logger log.Logger) {
 	mem.logger = logger
+}
+
+// SmallBankCheckAndInit检查交易格式是否正确
+// 同时如果账户不存在，则为其创建一个账户
+func (mem *ListMempool) SmallBankCheckAndInit(tx types.Tx) error {
+	return nil
+}
+
+func (mem *ListMempool) tmpInitAccount(name string) {
+
 }
 
 func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
@@ -89,6 +108,10 @@ func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
 		}
 
 		return ErrTxInCache
+	}
+
+	if err := mem.SmallBankCheckAndInit(tx); err != nil {
+		return err
 	}
 
 	memTx := &mempoolTx{

@@ -107,8 +107,19 @@ func (state *State) IsMatch(proposal *types.Proposal) bool {
 	return bytes.Equal(b.Hash(), proposal.LastBlockHash)
 }
 
+// Commit一个区块，把该区块从UnCommitBLocks中移除，放入到BlockTree中
+func (state *State) CommitBlock(block *types.Block) {
+	state.UnCommitBlocks.RemoveBlocks([]*types.Block{block})
+}
+
 func (state *State) CommitBlocks(blocks []*types.Block) {
 	state.UnCommitBlocks.RemoveBlocks(blocks)
+
+	// TODO fix 是否是在这里做更新逻辑，还是应该在收到区块就做
+	for _, block := range blocks {
+		state.BlockTree.AddBlocks(block.LastBlockHash, block)
+	}
+
 }
 
 // decideCommitBlocks 在当前状态，根据新的block给出可以提交的区块
