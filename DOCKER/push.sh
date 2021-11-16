@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
-TAG="v1.1"
-docker build -t "chain_bft:latest" .
+TAG="v1.2"
 
-docker tag chain_bft:latest 10.77.70.135:4433/chain_bft:$TAG
-docker push 10.77.70.135:4433/chain_bft:$TAG
+docker tag chain_bft:latest 10.77.70.82:4433/chain_bft:$TAG
+docker push 10.77.70.82:4433/chain_bft:$TAG
