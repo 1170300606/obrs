@@ -2,6 +2,7 @@ package node
 
 import (
 	"chainbft_demo/consensus"
+	"chainbft_demo/libs/metric"
 	"chainbft_demo/mempool"
 	"chainbft_demo/privval"
 	"chainbft_demo/rpc"
@@ -17,7 +18,6 @@ import (
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	"github.com/tendermint/tendermint/version"
-	tmdb "github.com/tendermint/tm-db"
 	"net"
 	"net/http"
 	"strings"
@@ -58,9 +58,13 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 		return nil, err
 	}
 
+	// create metric set
+	metricSet := createMetricSet()
+
 	// create Mempool reactor
 	memlogger := logger.With("module", "Mempool")
-	memR, mem := createMempoolReactor(config.Mempool, memlogger, innerDB.GetDB())
+	memR, mem := createMempoolReactor(config.Mempool, memlogger, metricSet)
+	memR.SetLogger(memlogger)
 
 	// 生成block执行器
 	execLogger := logger.With("module", "state")
@@ -72,7 +76,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 	conR, conS := createConsensusReactor(config.Consensus, conlogger,
 		genState,
 		blockExec, nil,
-		privValidator,
+		privValidator, metricSet,
 	)
 	conR.SetLogger(conlogger)
 
@@ -107,6 +111,7 @@ func NewNode(config *cfg.Config, nodekey *p2p.NodeKey, logger log.Logger, option
 		mempool:          mem,
 		mempoolReactor:   memR,
 		storeDB:          innerDB,
+		metricSet:        metricSet,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -139,10 +144,15 @@ func createLevelDB(config *cfg.BaseConfig, logger log.Logger) (state.Store, erro
 	return db, nil
 }
 
+func createMetricSet() *metric.MetricSet {
+	return metric.NewMetricSet()
+}
+
 func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 	genState state.State,
 	blockExec state.BlockExecutor, blockStore state.Store,
-	privKey types.PrivValidator) (*consensus.Reactor, *consensus.ConsensusState) {
+	privKey types.PrivValidator,
+	metric *metric.MetricSet) (*consensus.Reactor, *consensus.ConsensusState) {
 
 	// 创建consensus状态机
 	conS := consensus.NewDefaultConsensusState(
@@ -150,6 +160,7 @@ func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 		privKey, genState.Validators,
 		blockExec, blockStore,
 		genState,
+		consensus.RegisterMetric(metric),
 	)
 
 	// create Consensus reactor
@@ -162,9 +173,8 @@ func createConsensusReactor(config *cfg.ConsensusConfig, logger log.Logger,
 func createMempoolReactor(
 	config *cfg.MempoolConfig,
 	logger log.Logger,
-	db tmdb.DB,
-) (*mempool.Reactor, mempool.Mempool) {
-	mem := mempool.NewListMempool(config, mempool.SetStateDB(db))
+	metric *metric.MetricSet) (*mempool.Reactor, mempool.Mempool) {
+	mem := mempool.NewListMempool(config, mempool.RegisteryMetric(metric))
 	memR := mempool.NewReactor(config, mem)
 	memR.SetLogger(logger)
 
@@ -275,6 +285,8 @@ type Node struct {
 	storeDB          state.Store
 
 	rpcListeners []net.Listener
+
+	metricSet *metric.MetricSet
 }
 
 type Option func(*Node)

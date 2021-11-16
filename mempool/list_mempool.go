@@ -1,8 +1,10 @@
 package mempool
 
 import (
+	"chainbft_demo/libs/metric"
 	"chainbft_demo/types"
 	"crypto/sha256"
+	"fmt"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
@@ -21,6 +23,7 @@ func NewListMempool(config *cfg.MempoolConfig, options ...ListMempoolOption) *Li
 		slot:   types.LtimeZero,
 		config: config,
 		txs:    clist.New(),
+		metric: newMemMetric(),
 	}
 
 	mem.cache = nopTxCache{}
@@ -56,6 +59,8 @@ type ListMempool struct {
 	smallBank tmdb.DB // for small bank test
 
 	logger log.Logger
+
+	metric *memMetric
 }
 
 type ListMempoolOption func(memppol *ListMempool)
@@ -69,6 +74,15 @@ func SetPreCheck(precheck PreCheckFunc) ListMempoolOption {
 func SetStateDB(db tmdb.DB) ListMempoolOption {
 	return func(mem *ListMempool) {
 		mem.smallBank = db
+	}
+}
+
+func RegisteryMetric(metricSet *metric.MetricSet) ListMempoolOption {
+	return func(mem *ListMempool) {
+		fmt.Println("register mempool metrics")
+		if err := metricSet.SetMetrics("MEMPOOL", mem.metric); err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
@@ -248,6 +262,7 @@ func (mem *ListMempool) addTx(memTx *mempoolTx) {
 	memTx.tx.MarkTime(types.MempoolAdd, time.Now().UnixNano())
 	mem.txsMap.Store(TxKey(memTx.tx), e)
 	atomic.AddInt64(&mem.txsBytes, memTx.tx.ComputeSize())
+	mem.metric.MarkTotalTxsBytes(mem.txsBytes)
 }
 
 func (mem *ListMempool) removeTx(tx types.Tx, e *clist.CElement, removeFromCache bool) {
@@ -255,6 +270,7 @@ func (mem *ListMempool) removeTx(tx types.Tx, e *clist.CElement, removeFromCache
 	e.DetachPrev()
 	mem.txsMap.Delete(TxKey(tx))
 	atomic.AddInt64(&mem.txsBytes, int64(-tx.ComputeSize()))
+	mem.metric.MarkTxsNum(mem.txs.Len())
 	if removeFromCache {
 		mem.cache.Remove(tx)
 	}

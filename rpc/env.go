@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"chainbft_demo/consensus"
+	"chainbft_demo/libs/metric"
 	"chainbft_demo/mempool"
 	"chainbft_demo/state"
 )
@@ -18,4 +19,6 @@ type Environment struct {
 	Mempool   mempool.Mempool
 	Consensus *consensus.ConsensusState
 	Store     state.Store
+
+	MetricSet *metric.MetricSet
 }

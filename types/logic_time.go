@@ -43,3 +43,7 @@ func (t LTime) Mod(val int) int {
 func (x LTime) Sub(y LTime) int {
 	return int(x - y)
 }
+
+func (x LTime) Int64() int64 {
+	return int64(x)
+}
