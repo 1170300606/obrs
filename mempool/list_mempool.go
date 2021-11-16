@@ -6,9 +6,10 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
-	"math/rand"
+	tmdb "github.com/tendermint/tm-db"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -52,6 +53,8 @@ type ListMempool struct {
 	// This reduces the pressure on the proxyApp.
 	cache txCache
 
+	smallBank tmdb.DB // for small bank test
+
 	logger log.Logger
 }
 
@@ -63,12 +66,29 @@ func SetPreCheck(precheck PreCheckFunc) ListMempoolOption {
 	}
 }
 
+func SetStateDB(db tmdb.DB) ListMempoolOption {
+	return func(mem *ListMempool) {
+		mem.smallBank = db
+	}
+}
+
 func (mem *ListMempool) SetLogger(logger log.Logger) {
 	mem.logger = logger
 }
 
+// SmallBankCheckAndInit检查交易格式是否正确
+// 同时如果账户不存在，则为其创建一个账户
+func (mem *ListMempool) SmallBankCheckAndInit(tx types.Tx) error {
+	return nil
+}
+
+func (mem *ListMempool) tmpInitAccount(name string) {
+
+}
+
 func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
-	txSize := len(tx)
+	mem.logger.Error("receive tx", "tx", tx)
+	txSize := int(tx.ComputeSize())
 	if err := mem.isFull(txSize); err != nil {
 		return err
 	}
@@ -89,6 +109,10 @@ func (mem *ListMempool) CheckTx(tx types.Tx, txinfo TxInfo) error {
 		}
 
 		return ErrTxInCache
+	}
+
+	if err := mem.SmallBankCheckAndInit(tx); err != nil {
+		return err
 	}
 
 	memTx := &mempoolTx{
@@ -119,6 +143,7 @@ func (mem *ListMempool) ReapTxs(maxBytes int64) types.Txs {
 		if maxBytes > -1 && dataSize > maxBytes {
 			return txs
 		}
+		memTx.tx.MarkTime(types.MempoolReap, time.Now().UnixNano())
 		txs = append(txs, memTx.tx)
 	}
 
@@ -130,14 +155,6 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	// only test
-	n := rand.Intn(10)
-	txs_test := make([]types.Tx, 0, n)
-	for i := 0; i < n; i++ {
-		tx := types.Tx("asdfxcvzx")
-		txs_test = append(txs_test, tx)
-	}
-	return txs_test
 	if max < 0 {
 		max = mem.txs.Len()
 	}
@@ -151,9 +168,10 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		txs = append(txs, memTx.tx)
-		mem.logger.Debug("reap tx", "tx", memTx.tx)
-
+		memTx.tx.MarkTime(types.MempoolReap, time.Now().UnixNano())
 	}
+	mem.logger.Debug("reapped all txs", "size", len(txs))
+	mem.logger.Error("reap all txs", "size", len(txs), "txs", txs)
 	return txs
 }
 
@@ -227,15 +245,16 @@ func (mem *ListMempool) TxsFront() *clist.CElement {
 // 并且更新快速查询表txMap和mempool的tx总大小
 func (mem *ListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
+	memTx.tx.MarkTime(types.MempoolAdd, time.Now().UnixNano())
 	mem.txsMap.Store(TxKey(memTx.tx), e)
-	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx)))
+	atomic.AddInt64(&mem.txsBytes, memTx.tx.ComputeSize())
 }
 
 func (mem *ListMempool) removeTx(tx types.Tx, e *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(e)
 	e.DetachPrev()
 	mem.txsMap.Delete(TxKey(tx))
-	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(-tx.ComputeSize()))
 	if removeFromCache {
 		mem.cache.Remove(tx)
 	}
@@ -293,9 +312,5 @@ func (memTx *mempoolTx) Height() types.LTime {
 // ------------------------------
 // TxKey is the fixed length array hash used as the key in maps.
 func TxKey(tx types.Tx) [TxKeySize]byte {
-	return sha256.Sum256(tx)
-}
-
-func txID(tx []byte) []byte {
-	return types.Tx(tx).Hash()
+	return sha256.Sum256(tx.Hash())
 }

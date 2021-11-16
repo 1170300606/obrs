@@ -163,9 +163,9 @@ func TestReactor_MaxTxBytes(t *testing.T) {
 	// tx1的大小为规定的最大的大小
 	// 确保reactor 2要能收到该交易
 	tx1 := tmrand.Bytes(config.Mempool.MaxTxBytes)
-	err := reactors[0].mempool.CheckTx(tx1, TxInfo{SenderID: UnknownPeerID})
+	err := reactors[0].mempool.CheckTx(types.NormalTx(tx1), TxInfo{SenderID: UnknownPeerID})
 	require.NoError(t, err)
-	waitForTxsOnReactors(t, []types.Tx{tx1}, reactors)
+	waitForTxsOnReactors(t, []types.Tx{types.NormalTx(tx1)}, reactors)
 
 	reactors[0].mempool.Flush()
 	reactors[1].mempool.Flush()
@@ -173,7 +173,7 @@ func TestReactor_MaxTxBytes(t *testing.T) {
 	// tx2大小超过规定大小
 	// 确保reactor a不接受该交易
 	tx2 := tmrand.Bytes(config.Mempool.MaxTxBytes + 1)
-	err = reactors[0].mempool.CheckTx(tx2, TxInfo{SenderID: UnknownPeerID})
+	err = reactors[0].mempool.CheckTx(types.NormalTx(tx2), TxInfo{SenderID: UnknownPeerID})
 	require.Error(t, err)
 }
 

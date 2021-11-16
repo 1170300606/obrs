@@ -43,16 +43,7 @@ type Mempool interface {
 }
 
 //--------------------------------------------------------------------------------
-
-// PreCheckFunc is an optional filter executed before CheckTx and rejects
-// transaction if false is returned. An example would be to ensure that a
-// transaction doesn't exceeded the block size.
 type PreCheckFunc func(types.Tx) error
-
-// PostCheckFunc is an optional filter executed after CheckTx and rejects
-// transaction if false is returned. An example would be to ensure a
-// transaction doesn't require more gas than available for the block.
-//type PostCheckFunc func(types.Tx, *abci.ResponseCheckTx) error
 
 // TxInfo are parameters that get passed when attempting to add a tx to the
 // mempool.

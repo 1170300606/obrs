@@ -33,12 +33,12 @@ func checkTxs(t *testing.T, mempool Mempool, count int, peerID uint16) types.Txs
 	}
 	for i := 0; i < count; i++ {
 		txByte := make([]byte, 20)
-		txs[i] = txByte
+		txs[i] = types.NormalTx(txByte)
 		_, err := rand.Read(txByte)
 		if err != nil {
 			t.Error(err)
 		}
-		if err := mempool.CheckTx(txByte, txinfo); err != nil {
+		if err := mempool.CheckTx(txs[i], txinfo); err != nil {
 			t.Fatalf("checkTx failed: %v while checking #%d tx", err, i)
 		}
 	}
@@ -116,7 +116,7 @@ func TestReapTxs(t *testing.T) {
 	// 确保生成的tx参数符合预设
 	checkTxs(t, mem, 1, UnknownPeerID)
 	tx := mem.TxsFront().Value.(*mempoolTx)
-	require.Equal(t, 20, len(tx.tx), "len(tx) != 20 bytes")
+	require.Equal(t, 20, tx.tx.ComputeSize(), "len(tx) != 20 bytes")
 	mem.Flush() // 清空mempool，开始测试
 
 	tests := []struct {
@@ -158,9 +158,9 @@ func TestUpdate(t *testing.T) {
 
 	// 2. Removes valid txs from the mempool
 	{
-		err := mem.CheckTx([]byte{0x02}, TxInfo{})
+		err := mem.CheckTx(types.NormalTx{0x02}, TxInfo{})
 		require.NoError(t, err)
-		err = mem.Update(1, []types.Tx{[]byte{0x02}})
+		err = mem.Update(1, []types.Tx{types.NormalTx{0x02}})
 		require.NoError(t, err)
 		assert.Zero(t, mem.Size())
 	}

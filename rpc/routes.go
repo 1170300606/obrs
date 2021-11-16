@@ -7,4 +7,6 @@ var Routes = map[string]*rpc.RPCFunc{
 	"broadcast_tx_test": rpc.NewRPCFunc(BroadcastTxTest, ""),
 
 	"block_tree": rpc.NewRPCFunc(BlockTree, ""),
+
+	"init_account": rpc.NewRPCFunc(InitSmallBankAccount, "name,saving,checking"),
 }

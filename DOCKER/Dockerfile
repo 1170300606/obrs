@@ -37,3 +37,4 @@ STOPSIGNAL SIGTERM
 
 ARG BINARY=chain_bft
 COPY $BINARY /usr/bin/chain_bft
+COPY smallbank.db /root/.chainbft/data/state.db

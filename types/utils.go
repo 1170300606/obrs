@@ -7,7 +7,7 @@ func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 		Header: Header{
 			ChainID:       ChainID,
 			Slot:          LtimeZero,
-			Ctime:         genesisTime,
+			ProposalTime:  genesisTime,
 			BlockState:    CommittedBlock,
 			LastBlockHash: []byte{},
 			BlockHash:     nil,
@@ -24,7 +24,7 @@ func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 func MakeBlock(txs []Tx) *Block {
 	block := &Block{
 		Header: Header{
-			Ctime: time.Now(),
+			ProposalTime: time.Now(),
 		},
 		Data: Data{
 			Txs: txs,
