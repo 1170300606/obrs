@@ -35,3 +35,7 @@ func (Mempool) TxsWaitChan() <-chan struct{} { return nil }
 
 func (Mempool) InitWAL() error { return nil }
 func (Mempool) CloseWAL()      {}
+
+func (m Mempool) ReleaseTxs(txs types.Txs) error {
+	panic("implement me")
+}

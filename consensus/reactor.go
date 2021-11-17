@@ -90,6 +90,8 @@ func (conR *Reactor) OnStart() error {
 	conR.consensus.slotClock.OnStart()
 
 	conR.consensus.OnStart()
+
+	// TODO fix 如何初始化时间
 	conR.consensus.slotClock.ResetClock(10 * time.Second) // slot 间隔
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	multisig "chainbft_demo/crypto/threshold"
 	"chainbft_demo/types"
 	"errors"
+	"fmt"
 )
 
 var (
@@ -109,6 +110,7 @@ func (vs *voteSet) TryGenQuorum(threshold int) types.Quorum {
 		sigs, ids := getSignsAndIdsFromVotes(majorityVotes)
 		var err error
 		signature, err = multisig.SignatureRecovery(threshold, sigs, ids)
+		fmt.Println(err)
 		if err != nil {
 			quorumType = types.EmptyQuorum
 			signature = nil

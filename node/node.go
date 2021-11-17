@@ -343,6 +343,7 @@ func (n *Node) startRPC(logger log.Logger) ([]net.Listener, error) {
 		Mempool:   n.mempool,
 		Consensus: n.conS,
 		Store:     n.storeDB,
+		MetricSet: n.metricSet,
 	})
 
 	config := server.DefaultConfig()

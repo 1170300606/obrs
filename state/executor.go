@@ -17,6 +17,10 @@ type BlockExecutor interface {
 	// Apply一个指定的区块，如果提交成功后state发生变化，返回新的state
 	ApplyBlock(state State, block *types.Block) (State, error)
 
+	UpdateBlockState(block *types.Block, blockstate types.BlockState) error
+
+	UpdateState(state *State, proposal *types.Block) error
+
 	SetLogger(logger log.Logger)
 }
 
@@ -62,19 +66,19 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 	}
 
 	// 首先将这轮slot收到的block里面的交易在mempool中变更状态
-	exec.mempool.Lock()
-	exec.logger.Debug("prepare to locks proposal txs")
-	if err := exec.mempool.LockTxs(proposal.Txs); err != nil {
-		exec.logger.Error("Lock txs in mempool failed.", "raason", err)
-	}
-	exec.mempool.Unlock()
+	//exec.mempool.Lock()
+	//exec.logger.Debug("prepare to locks proposal txs")
+	//if err := exec.mempool.LockTxs(proposal.Txs); err != nil {
+	//	exec.logger.Error("Lock txs in mempool failed.", "raason", err)
+	//}
+	//exec.mempool.Unlock()
 
 	// 根据proposal的投票情况更新blockSet
 	state.UnCommitBlocks.AddBlock(proposal)
 
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(proposal)
-	exec.logger.Debug("prepare to commit blocks", "size", len(toCommitBlock), "toCommitBlocks", toCommitBlock)
+	exec.logger.Info("prepare to commit blocks", "size", len(toCommitBlock), "toCommitBlocks", toCommitBlock)
 
 	// 正式提交交易，在这里可能不止提交一个交易，如果提交成功后还要负责删除mempool中的交易
 	state, _, err := exec.Commit(state, toCommitBlock)
@@ -82,16 +86,25 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 		return state, err
 	}
 
+	// 收到区块就加入到blockTree中
+	state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
+
 	return state, err
 }
 
 // TODO 当有多个可提交区块的时候，如何处理？
 // 函数的语义：在当前state下，尽力提交所有可以提交的区块，如果提交成功后更新mempool
-func (exec *blockExecutor) Commit(state State, toCommitblocks []*types.Block) (newState State, lastCommittedBlock *types.Block, err error) {
+func (exec *blockExecutor) Commit(
+	state State,
+	toCommitblocks []*types.Block) (
+	newState State,
+	lastCommittedBlock *types.Block,
+	err error,
+) {
 	newState = state
 	for idx, block := range toCommitblocks {
 		// TODO 当上一轮的区块提交失败时，是否要继续提交？
-		exec.logger.Debug("commit block", "state", state, "idx", idx)
+		exec.logger.Info("commit block", "state", state, "idx", idx)
 
 		// step 1 提交到状态数据库
 		resulthash, err := exec.stateDB.CommitBlock(state, block)
@@ -101,14 +114,18 @@ func (exec *blockExecutor) Commit(state State, toCommitblocks []*types.Block) (n
 		}
 
 		// step 2 更新mempool，删除交易
-		exec.mempool.Lock()
-
-		if err := exec.mempool.Update(0, block.Txs); err != nil {
-			exec.logger.Error("Update tx in mempool failed.", "reason", err)
-			exec.mempool.Unlock()
+		if err := exec.UpdateBlockState(block, types.CommittedBlock); err != nil {
+			exec.logger.Error("commit block failed when update mempool.", "err", err, "block", block.Hash())
 			continue
 		}
-		exec.mempool.Unlock()
+		//exec.mempool.Lock()
+		//
+		//if err := exec.mempool.Update(0, block.Txs); err != nil {
+		//	exec.logger.Error("Update tx in mempool failed.", "reason", err)
+		//	exec.mempool.Unlock()
+		//	continue
+		//}
+		//exec.mempool.Unlock()
 
 		// step 3 更新state
 		tmpState := newState.Copy()
@@ -152,6 +169,12 @@ func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *typ
 		block.Evidences = append(block.Evidences, pblock.VoteQuorum.Copy())
 	}
 
+	exec.logger.Info("proposal created.",
+		"slot", block.Slot,
+		"txsSize", len(block.Txs),
+		"txsHash", block.Txs.Hash(),
+		"proposalHash", block.Hash())
+
 	return &types.Proposal{
 		Block: block,
 	}
@@ -169,5 +192,70 @@ func (exec *blockExecutor) validateBlock(state State, block *types.Block) error 
 		return errors.New("block has different validator set")
 	}
 
+	return nil
+}
+
+func (exec *blockExecutor) UpdateBlockState(block *types.Block, blockstate types.BlockState) error {
+	if blockstate == types.PrecommitBlock {
+		exec.mempool.LockTxs(block.Txs)
+	} else if blockstate == types.ErrorBlock {
+		exec.mempool.ReleaseTxs(block.Txs)
+	} else if blockstate == types.CommittedBlock {
+		exec.mempool.Update(block.Slot, block.Txs)
+	}
+	block.BlockState = blockstate
+	return nil
+}
+
+func (exec *blockExecutor) UpdateState(state *State, proposal *types.Block) error {
+
+	if state.PubVal == nil {
+		// public validator为空 没法更新
+		return errors.New("validator public key is nil")
+	}
+	// 如果evidence quorum不为空，更新以往到区块的信息
+	if proposal.Evidences != nil {
+		for _, evidence := range proposal.Evidences {
+			blockhash := evidence.BlockHash
+
+			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
+			if block == nil {
+				continue
+			}
+
+			if block.BlockState == types.CommittedBlock {
+				// 已经提交的区块
+				continue
+			}
+			if block.Commit == nil {
+				block.Commit = &types.Commit{}
+			}
+
+			// 首先检验evidence的正确性 - 签名的正确性
+			if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
+				// evidence验证错误 跳过
+				exec.logger.Error("evidence is wrong.", "proposal", proposal)
+				continue
+			}
+
+			block.VoteQuorum = evidence
+			// 更新blockstate
+			if evidence.Type == types.SupportQuorum {
+				if block.BlockState != types.PrecommitBlock {
+					// 如果更改区块状态为precommit
+					block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
+					if err := exec.UpdateBlockState(block, types.PrecommitBlock); err != nil {
+						exec.logger.Error("update block state to precommit failed.", "err", err)
+						return err
+					}
+				}
+			} else if evidence.Type == types.AgainstQuorum {
+				if err := exec.UpdateBlockState(block, types.ErrorBlock); err != nil {
+					exec.logger.Error("update block state to error failed.", "err", err)
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }

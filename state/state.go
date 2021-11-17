@@ -114,12 +114,6 @@ func (state *State) CommitBlock(block *types.Block) {
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
 	state.UnCommitBlocks.RemoveBlocks(blocks)
-
-	// TODO fix 是否是在这里做更新逻辑，还是应该在收到区块就做
-	for _, block := range blocks {
-		state.BlockTree.AddBlocks(block.LastBlockHash, block)
-	}
-
 }
 
 // decideCommitBlocks 在当前状态，根据新的block给出可以提交的区块
@@ -146,52 +140,6 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 	}
 
 	return toCommitBlocks
-}
-
-// UpdateState 每次收到新的提案，不论提案的正确与否，都将block内的support quorum更新到对应的区块上
-func (state *State) UpdateState(block *types.Block) {
-	if state.PubVal == nil {
-		// public validator为空 没法更新
-		return
-	}
-	// 如果evidence quorum不为空，更新以往到区块的信息
-	if block.Evidences != nil {
-		for _, evidence := range block.Evidences {
-			blockhash := evidence.BlockHash
-
-			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
-			if block == nil {
-				continue
-			}
-
-			// TODO 首先检验evidence的正确性 - 签名的正确性
-			if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
-				// evidence验证错误 跳过
-				continue
-			}
-
-			if block.Commit == nil {
-				block.Commit = &types.Commit{}
-			}
-
-			if block.BlockState == types.CommittedBlock {
-				// 已经提交的区块
-				continue
-			}
-
-			block.VoteQuorum = evidence
-			// 更新blockstate
-			if evidence.Type == types.SupportQuorum {
-				if block.BlockState != types.PrecommitBlock {
-					// 如果更改区块状态为precommit
-					block.BlockState = types.PrecommitBlock
-					block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
-				}
-			} else if evidence.Type == types.AgainstQuorum {
-				block.BlockState = types.ErrorBlock
-			}
-		}
-	}
 }
 
 func (state *State) GenesisBlock() *types.Block {

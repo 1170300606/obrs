@@ -34,7 +34,7 @@ func TestNewBranch(t *testing.T) {
 		actual, _ := genState.NewBranch()
 		assert.Equal(t, blocks[node.expected], actual)
 
-		b := types.MakeBlock([]types.Tx{[]byte(fmt.Sprintf("%v", idx))})
+		b := types.MakeBlock([]types.Tx{types.NormalTx((fmt.Sprintf("%v", idx)))})
 		b.Fill(chainID,
 			types.LTime(node.slot),
 			node.blockState,

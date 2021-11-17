@@ -29,8 +29,11 @@ type Mempool interface {
 	// NOTE: caller负责Lock/Unlock
 	Update(types.LTime, types.Txs) error
 
-	// TODO 将txs所在mempool中的交易变更状态锁住
+	// 将txs所在mempool中的交易变更状态锁住
 	LockTxs(txs types.Txs) error
+
+	// 将txs所在mempool中的交易变更状态释放
+	ReleaseTxs(txs types.Txs) error
 
 	// Flush将mempool中的所有交易和和cache清空
 	Flush()

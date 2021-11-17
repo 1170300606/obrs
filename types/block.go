@@ -135,7 +135,6 @@ func (h *Header) Hash() tmbytes.HexBytes {
 	if h == nil {
 		return nil
 	}
-	startTimeHash, _ := h.SlotStartTime.MarshalBinary()
 	if h.BlockHash == nil {
 		h.BlockHash = merkle.HashFromByteSlices([][]byte{
 			[]byte(h.ChainID),
@@ -143,7 +142,6 @@ func (h *Header) Hash() tmbytes.HexBytes {
 			h.LastBlockHash,
 			h.TxsHash,
 			h.ValidatorsHash,
-			startTimeHash,
 		})
 	}
 	return h.BlockHash

@@ -49,8 +49,9 @@ type ListMempool struct {
 	updateMtx sync.RWMutex
 	preCheck  PreCheckFunc
 
-	txs    *clist.CList
-	txsMap sync.Map // Txkey(tx) => clist.CElement
+	txs          *clist.CList
+	txsMap       sync.Map // Txkey(tx) => clist.CElement
+	lockedTxsMap sync.Map // Txkey(tx) -> struct{} 仅仅是表示交易已被打包，但未执行
 
 	// Keep a cache of already-seen txs.
 	// This reduces the pressure on the proxyApp.
@@ -150,6 +151,11 @@ func (mem *ListMempool) ReapTxs(maxBytes int64) types.Txs {
 
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
+		txkey := TxKey(memTx.tx)
+		if _, ok := mem.lockedTxsMap.Load(txkey); ok {
+			// 该交易已经被打包
+			continue
+		}
 
 		// TODO 如何计算txs的bytes，计算编码后的bytes大小还是前的
 		dataSize := types.CaputeSizeForTxs(append(txs, memTx.tx))
@@ -185,7 +191,6 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 		memTx.tx.MarkTime(types.MempoolReap, time.Now().UnixNano())
 	}
 	mem.logger.Debug("reapped all txs", "size", len(txs))
-	mem.logger.Error("reap all txs", "size", len(txs), "txs", txs)
 	return txs
 }
 
@@ -216,7 +221,17 @@ func (mem *ListMempool) Update(slot types.LTime, toRemoveTxs types.Txs) error {
 
 // TODO toLockTxs变更状态
 // Caller负责加锁
-func (mem *ListMempool) LockTxs(_ types.Txs) error {
+func (mem *ListMempool) LockTxs(txs types.Txs) error {
+	for _, tx := range txs {
+		mem.lockedTxsMap.Store(TxKey(tx), struct{}{})
+	}
+	return nil
+}
+
+func (mem *ListMempool) ReleaseTxs(txs types.Txs) error {
+	for _, tx := range txs {
+		mem.lockedTxsMap.Delete(TxKey(tx))
+	}
 	return nil
 }
 
