@@ -65,14 +65,6 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 		return state, ErrInvalidBlock(err)
 	}
 
-	// 首先将这轮slot收到的block里面的交易在mempool中变更状态
-	//exec.mempool.Lock()
-	//exec.logger.Debug("prepare to locks proposal txs")
-	//if err := exec.mempool.LockTxs(proposal.Txs); err != nil {
-	//	exec.logger.Error("Lock txs in mempool failed.", "raason", err)
-	//}
-	//exec.mempool.Unlock()
-
 	// 根据proposal的投票情况更新blockSet
 	state.UnCommitBlocks.AddBlock(proposal)
 

@@ -257,12 +257,12 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 				cs.Logger.Error("set proposal failed.", "error", err)
 				return
 			}
-			//cs.Logger.Info("set proposal success.", "cur", cs.CurSlot, "proposer", cs.Proposer.Address)
-			//cs.Logger.Info("set proposal success",
-			//	"slot", cs.CurSlot,
-			//	"txsSize", len(msg.Proposal.Txs),
-			//	"txsHash", msg.Proposal.Txs.Hash(),
-			//	"proposalHash", msg.Proposal.Hash())
+			cs.Logger.Debug("set proposal success.", "cur", cs.CurSlot, "proposer", cs.Proposer.Address)
+			cs.Logger.Debug("set proposal success",
+				"slot", cs.CurSlot,
+				"txsSize", len(msg.Proposal.Txs),
+				"txsHash", msg.Proposal.Txs.Hash(),
+				"proposalHash", msg.Proposal.Hash())
 
 		} else {
 			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
@@ -402,25 +402,6 @@ func (cs *ConsensusState) enterApply() {
 		if quorum.Type == types.SupportQuorum {
 			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.PrecommitBlock)
 			cs.Proposal.Block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
-
-			// 区块转为precommit block，为block里面的support-quorum指向的区块生成commit
-			// TODO ？意义是什么 忘了
-			//if cs.Proposal.Evidences != nil {
-			//	for _, evidence := range cs.Proposal.Evidences {
-			//		if evidence.Type != types.SupportQuorum {
-			//			continue
-			//		}
-			//
-			//		block := cs.state.UnCommitBlocks.QueryBlockByHash(evidence.BlockHash)
-			//		if block == nil {
-			//			// 没有查到区块 可能已经提交
-			//			continue
-			//		}
-			//		block.Commit.SetQuorum(&evidence)
-			//		block.Commit.SetWitness(witness)
-			//		cs.Logger.Info("block update commit evidence", "evidence", evidence, "witness", witness)
-			//	}
-			//}
 		} else if quorum.Type == types.AgainstQuorum {
 			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.ErrorBlock)
 		} else {
@@ -583,8 +564,9 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	cs.Logger.Debug("got proposal", "proposal", proposal)
 
 	//// DEBUG 让广播慢一点 ????
-	time.Sleep(500 * time.Millisecond)
-
+	if len(proposal.Txs) == 0 {
+		time.Sleep(500 * time.Millisecond)
+	}
 	// 通过内部chan传递到defaultSetproposal函数统一处理
 	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
 
