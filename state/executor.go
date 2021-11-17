@@ -223,12 +223,13 @@ func (exec *blockExecutor) UpdateState(state *State, proposal *types.Block) erro
 				block.Commit = &types.Commit{}
 			}
 
+			// TODO FIX
 			// 首先检验evidence的正确性 - 签名的正确性
-			if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
-				// evidence验证错误 跳过
-				exec.logger.Error("evidence is wrong.", "proposal", proposal)
-				continue
-			}
+			//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
+			//	// evidence验证错误 跳过
+			//	exec.logger.Error("evidence is wrong.", "proposal", proposal)
+			//	continue
+			//}
 
 			block.VoteQuorum = evidence
 			// 更新blockstate

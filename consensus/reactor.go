@@ -155,7 +155,7 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		var proposal types.Proposal
 
 		if err := tmjson.Unmarshal(msgBytes, &proposal); err != nil {
-			conR.consensus.Logger.Error("try to unmarshal proposal failed", "err", err, "msgBytes", msgBytes)
+			conR.consensus.Logger.Error("try to unmarshal proposal failed", "err", err)
 			break
 		}
 
