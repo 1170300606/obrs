@@ -9,6 +9,8 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	tmtime "github.com/tendermint/tendermint/types/time"
+	"math"
 	"math/rand"
 	"time"
 )
@@ -91,8 +93,18 @@ func (conR *Reactor) OnStart() error {
 
 	conR.consensus.OnStart()
 
-	// TODO fix 如何初始化时间
-	conR.consensus.slotClock.ResetClock(10 * time.Second) // slot 间隔
+	// 设置初始化时间，离创世区块最近的第2个完整slot的起始时间
+	tmnow := tmtime.Now()
+	proposalTime := conR.consensus.state.GenesisBlock().ProposalTime
+	diffs := float64(tmnow.Sub(proposalTime).Milliseconds()) / 1000.0
+
+	diffSlot := int(math.Ceil(diffs/slotTimeOut.Seconds())) + 1
+
+	// 计算理论上的启动时间 = 离创世区块时间最近的一个slot的起始时间
+	startTime := proposalTime.Add(time.Duration(diffSlot*int(slotTimeOut.Seconds())) * time.Second)
+
+	conR.Logger.Error("wait start time", "reset", startTime.Sub(tmnow))
+	conR.consensus.slotClock.ResetClock(startTime.Sub(tmnow)) // slot 间隔
 	return nil
 }
 
