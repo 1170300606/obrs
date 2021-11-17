@@ -93,17 +93,18 @@ func (conR *Reactor) OnStart() error {
 
 	conR.consensus.OnStart()
 
-	// 设置初始化时间，离创世区块最近的第2个完整slot的起始时间
+	// 设置初始化时间，离创世区块最近的第1个完整slot的起始时间
 	tmnow := tmtime.Now()
 	proposalTime := conR.consensus.state.GenesisBlock().ProposalTime
 	diffs := float64(tmnow.Sub(proposalTime).Milliseconds()) / 1000.0
 
-	diffSlot := int(math.Ceil(diffs/slotTimeOut.Seconds())) + 1
+	diffSlot := int(math.Ceil(diffs / slotTimeOut.Seconds()))
 
 	// 计算理论上的启动时间 = 离创世区块时间最近的一个slot的起始时间
 	startTime := proposalTime.Add(time.Duration(diffSlot*int(slotTimeOut.Seconds())) * time.Second)
 
-	conR.Logger.Error("wait start time", "reset", startTime.Sub(tmnow))
+	conR.Logger.Debug("timetime", "proposal", proposalTime, "now", tmnow, "idea", startTime)
+	conR.Logger.Info("wait start time", "sleep", startTime.Sub(tmnow))
 	conR.consensus.slotClock.ResetClock(startTime.Sub(tmnow)) // slot 间隔
 	return nil
 }

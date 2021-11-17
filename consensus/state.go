@@ -258,7 +258,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 				return
 			}
 			cs.Logger.Debug("set proposal success.", "cur", cs.CurSlot, "proposer", cs.Proposer.Address)
-			cs.Logger.Debug("set proposal success",
+			cs.Logger.Info("set proposal success",
 				"slot", cs.CurSlot,
 				"txsSize", len(msg.Proposal.Txs),
 				"txsHash", msg.Proposal.Txs.Hash(),
