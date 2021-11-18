@@ -110,8 +110,8 @@ type Header struct {
 	Signature tmbytes.HexBytes `json:"signature"`  // 区块的签名，sign {chainID}{slot}{LastBlockHash}{TxsHash}{ValidatorsHash}{ResultHash}
 
 	// timestamp，保存的是对应状态的时间戳
-	BlockPrecommitTime int64 `json:"precommit_timestamp"` // 达成precommit状态的耗时
-	BlockCommitTime    int64 `json:"commit_timestamp"`    // 达成commit状态的耗时
+	BlockPrecommitTime int64 `json:"precommit_timestamp"` // 达成precommit状态的时间戳
+	BlockCommitTime    int64 `json:"commit_timestamp"`    // 达成commit状态的时间戳
 
 	TimePrecommit int64 `json:"precommit_time"` // 达成precommit状态的耗时
 	TimeCommit    int64 `json:"commit_time"`    // 达成commit状态的耗时

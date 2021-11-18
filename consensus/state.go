@@ -21,10 +21,10 @@ var (
 )
 
 // 临时配置区
-const (
-	threshold   = 3
-	slotTimeOut = 2 * time.Second // 两个slot之间的间隔
-	slotdiffs   = 5
+var (
+	Threshold   = 3
+	SlotTimeOut = 2 * time.Second // 两个slot之间的间隔
+	Slotdiffs   = 5
 )
 
 // 共识状态机实现
@@ -327,7 +327,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 		// 成功切换到新的slot，更新状态到RoundStepSLot
 		cs.updateStep(cstype.RoundStepSlot)
 	}()
-	cs.Logger.Info("enter new slot", "slot", slot, "startTime", cs.curSlotStartTime)
+	cs.Logger.Info("enter new slot", "slot", slot, "duration", SlotTimeOut, "startTime", cs.curSlotStartTime)
 
 	// 完成切换到slot ？是否需要先更新状态机的状态，如将状态暂时保存起来等
 	cs.Logger.Debug("current slot", "slot", cs.slotClock.GetSlot())
@@ -339,7 +339,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	cs.decideProposer()
 
 	// 如果切换成功，首先应该重新启动定时器
-	cs.slotClock.ResetClock(slotTimeOut)
+	cs.slotClock.ResetClock(SlotTimeOut)
 	cs.reviseSlotTime()
 	// 关于状态机的切换，是直接在这里调用下一轮的函数；
 	// 还是在统一的处理函数如handleStateMsg，然后根据不同的消息类型调用不同的阶段函数
@@ -391,7 +391,7 @@ func (cs *ConsensusState) enterApply() {
 
 		// 有收到投票
 		//witness := cs.Proposal.Block
-		quorum := voteset.TryGenQuorum(threshold)
+		quorum := voteset.TryGenQuorum(Threshold)
 		quorum.SLot = cs.Proposal.Slot
 
 		cs.Logger.Info("generate quorum done.", "attitude", quorum.Type.String())
@@ -716,9 +716,9 @@ func (cs *ConsensusState) reviseSlotTime() {
 	// 当前slot的新的开始时间
 	slotStartTime := cs.state.LastCommitedBlock.SlotStartTime
 	for i := 0; i < slotdiff; i++ {
-		slotStartTime = slotStartTime.Add(slotTimeOut)
+		slotStartTime = slotStartTime.Add(SlotTimeOut)
 	}
-	slotEndTime := slotStartTime.Add(slotTimeOut)
+	slotEndTime := slotStartTime.Add(SlotTimeOut)
 
 	cs.Logger.Debug("[test] slot", "curSlot", cs.CurSlot, "baseSlot", cs.state.LastCommitedBlock.Slot, "slotDiff", slotdiff)
 	cs.Logger.Debug("[test] time", "curStart", cs.curSlotStartTime, "baseStart", cs.state.LastCommitedBlock.SlotStartTime, "revisedStart", slotStartTime, "revisedEnd", slotEndTime)
@@ -811,7 +811,7 @@ type msgInfo struct {
 
 // internally generated messages which may update the state
 type timeoutInfo struct {
-	Duration time.Duration        `json:"slotTimeOut"`
+	Duration time.Duration        `json:"SlotTimeOut"`
 	Slot     types.LTime          `json:"slot"`
 	Step     cstype.RoundStepType `json:"step"`
 }

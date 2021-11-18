@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const (
+var (
 	MaxBlockTxSize = 2000
 )
 

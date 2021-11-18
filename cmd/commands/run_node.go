@@ -2,16 +2,17 @@ package commands
 
 import (
 	"bytes"
+	"chainbft_demo/consensus"
+	nm "chainbft_demo/node"
+	"chainbft_demo/state"
 	"crypto/sha256"
 	"fmt"
-	"io"
-	"os"
-
 	"github.com/spf13/cobra"
-
-	nm "chainbft_demo/node"
 	cfg "github.com/tendermint/tendermint/config"
 	tmos "github.com/tendermint/tendermint/libs/os"
+	"io"
+	"os"
+	"time"
 )
 
 var (
@@ -93,6 +94,10 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"db_dir",
 		config.DBPath,
 		"database directory")
+
+	cmd.Flags().IntVar(&state.MaxBlockTxSize, "max_block_size", 2000, "max block tx num")
+	cmd.Flags().IntVar(&consensus.Threshold, "threshold", 3, "signature threshold number")
+	cmd.Flags().IntVar(&slottimeout, "slot_timeout", 3, "slot timeout")
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.
@@ -103,6 +108,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 		Aliases: []string{"node", "run"},
 		Short:   "Run the bft node",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			consensus.SlotTimeOut = time.Duration(slottimeout) * time.Second
 			if err := checkGenesisHash(config); err != nil {
 				return err
 			}
@@ -133,6 +139,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 	}
 
 	AddNodeFlags(cmd)
+
 	return cmd
 }
 

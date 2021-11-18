@@ -23,6 +23,9 @@ type ResultBlock struct {
 	BlockPrecommitTime float64 `json:"precommit_time"` // 达成precommit状态的耗时
 	BlockCommitTime    float64 `json:"commit_time"`    // 达成precommit状态的耗时
 	TotalConsensusTime float64 `json:"consensus_time"` // 共识总耗时
+
+	ConsensusStartTime int64 `json:"consensus_start_timetamp"`
+	ConsensusEndTime   int64 `json:"consensus_end_timetamp"`
 	ResultLatency
 }
 
@@ -32,6 +35,13 @@ type ResultLatency struct {
 	Min_Latency  float64 `json:"min_tx_latency"`
 	Mean_Latency float64 `json:"mean_tx_latency"`
 	Avg_Latency  float64 `json:"avg_tx_latency"`
+}
+
+type ResultPerformance struct {
+	Start int     `json:"start_slot"`
+	End   int     `json:"end_slot"`
+	Tps   float64 `json:"tps"`
+	ResultLatency
 }
 
 func BlockTree(ctx *rpctypes.Context) (*ResultBlockTree, error) {
@@ -63,6 +73,8 @@ func BlockTree(ctx *rpctypes.Context) (*ResultBlockTree, error) {
 			BlockPrecommitTime: float64(oblock.TimePrecommit) / 1e9,
 			BlockCommitTime:    float64(oblock.TimeCommit) / 1e9,
 			TotalConsensusTime: float64(oblock.TimeConsensus) / 1e9,
+			ConsensusStartTime: oblock.ProposalTime.UnixNano(),
+			ConsensusEndTime:   oblock.BlockCommitTime,
 			ResultLatency: ResultLatency{
 				TxNum:        len(txsLatency),
 				Max_Latency:  utils.Max(txsLatency...),
@@ -79,6 +91,59 @@ func BlockTree(ctx *rpctypes.Context) (*ResultBlockTree, error) {
 	}, nil
 }
 
-func BlockLatency(ctx *rpctypes.Context, slot int) (*ResultLatency, error) {
-	return nil, nil
+func performance(ctx *rpctypes.Context, start, end int) (*ResultPerformance, error) {
+	blocks := env.Consensus.GetAllBlocks()
+	slotBlocks := map[int]*types.Block{}
+
+	for _, block := range blocks {
+		idx := int(block.Slot.Int64())
+		slotBlocks[idx] = block
+	}
+
+	txs := int64(0)
+	startTime := float64(0)
+	latencies := make([]float64, 0, end-start+1)
+	var lastCommittedBlock *types.Block
+	for i := start; i <= end; i++ {
+		oblock, ok := slotBlocks[i]
+		if !ok {
+			continue
+		}
+		if oblock.BlockState != types.CommittedBlock {
+			continue
+		}
+		if startTime == 0 {
+			startTime = float64(oblock.ProposalTime.UnixNano()) / 1e9
+		}
+
+		txs += int64(len(oblock.Txs))
+		lastCommittedBlock = oblock
+		txsLatency := make([]float64, 0, len(oblock.Txs))
+		for i := 0; i < len(oblock.Txs); i++ {
+			sbtx, _ := oblock.Txs[i].(*types.SmallBankTx)
+			txLatency := float64(oblock.BlockCommitTime - sbtx.TxSendTimestamp)
+			if txLatency > 0 {
+				txsLatency = append(txsLatency, txLatency/1e9)
+			}
+		}
+		if utils.Mean(txsLatency...) > 0 {
+			latencies = append(latencies, utils.Mean(txsLatency...))
+		}
+	}
+	if lastCommittedBlock == nil {
+		return nil, nil
+	}
+	endTime := float64(lastCommittedBlock.BlockCommitTime) / 1e9
+	return &ResultPerformance{
+		Start: start,
+		End:   end,
+		Tps:   float64(txs) / (endTime - startTime),
+		ResultLatency: ResultLatency{
+			TxNum:        int(txs),
+			Max_Latency:  utils.Max(latencies...),
+			Min_Latency:  utils.Min(latencies...),
+			Mean_Latency: utils.Mean(latencies...),
+			Avg_Latency:  utils.Avg(latencies...),
+		},
+	}, nil
 }

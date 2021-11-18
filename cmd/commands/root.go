@@ -2,16 +2,14 @@ package commands
 
 import (
 	"fmt"
-	"os"
-	"strings"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/cli"
 	tmflags "github.com/tendermint/tendermint/libs/cli/flags"
 	"github.com/tendermint/tendermint/libs/log"
+	"os"
+	"strings"
 )
 
 var (
@@ -25,6 +23,7 @@ var (
 
 	chainID       string
 	cluster_count int
+	slottimeout   int
 )
 
 func init() {
@@ -33,6 +32,7 @@ func init() {
 
 func registerFlagsRootCmd(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("log_level", config.LogLevel, "log level")
+
 }
 
 // ParseConfig retrieves the default environment configuration,
