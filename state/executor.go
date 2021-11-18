@@ -62,6 +62,10 @@ func (exec *blockExecutor) SetLogger(logger log.Logger) {
 // ApplyBlock implements BlockExecutor
 // apply上一轮slot的proposal，同时会尝试更新pre-commit区块
 func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State, error) {
+
+	// 收到区块就加入到blockTree中
+	state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
+
 	// 首先验证区块是否合法，不合法直接返回愿状态
 	if err := exec.validateBlock(state, proposal); err != nil {
 		return state, ErrInvalidBlock(err)
@@ -79,9 +83,6 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 	if err != nil {
 		return state, err
 	}
-
-	// 收到区块就加入到blockTree中
-	state.BlockTree.AddBlocks(proposal.LastBlockHash, proposal)
 
 	return state, err
 }

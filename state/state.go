@@ -138,6 +138,7 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 		return toCommitBlocks
 	}
 	lastCommitedBlock := blocks[idx]
+	toCommitBlocks = append(toCommitBlocks, lastCommitedBlock)
 	for true {
 		preHash := lastCommitedBlock.LastBlockHash
 		preBlock, err := state.BlockTree.QueryBlockByHash(preHash)
@@ -146,6 +147,10 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 		}
 		toCommitBlocks = append(toCommitBlocks, preBlock)
 		lastCommitedBlock = preBlock
+	}
+
+	for i := 0; i < len(toCommitBlocks)/2; i++ {
+		toCommitBlocks[i], toCommitBlocks[len(toCommitBlocks)-i-1] = toCommitBlocks[len(toCommitBlocks)-i-1], toCommitBlocks[i]
 	}
 
 	return toCommitBlocks
