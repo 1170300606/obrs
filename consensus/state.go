@@ -22,11 +22,9 @@ var (
 
 // 临时配置区
 const (
-	threshold          = 3
-	slotTimeOut        = 5 * time.Second // 两个slot之间的间隔
-	slotdiffs          = 2
-	immediateTimeOut   = 0 * time.Second   //
-	initialSlotTimeout = 100 * time.Second // 节点启动后clock默认超时时间
+	threshold   = 3
+	slotTimeOut = 2 * time.Second // 两个slot之间的间隔
+	slotdiffs   = 5
 )
 
 // 共识状态机实现
@@ -396,7 +394,7 @@ func (cs *ConsensusState) enterApply() {
 		quorum := voteset.TryGenQuorum(threshold)
 		quorum.SLot = cs.Proposal.Slot
 
-		cs.Logger.Info("generate quorum done.", "quorum", quorum)
+		cs.Logger.Info("generate quorum done.", "attitude", quorum.Type.String())
 		cs.Proposal.Block.VoteQuorum = quorum
 
 		if quorum.Type == types.SupportQuorum {
@@ -563,9 +561,9 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	cs.Logger.Debug("got proposal", "proposal", proposal)
 	cs.Logger.Info("generated proposal", "txSize", len(proposal.Txs), "proposalHash", proposal.Hash())
 	//// DEBUG 让广播慢一点 ????
-	if len(proposal.Txs) == 0 {
-		time.Sleep(200 * time.Millisecond)
-	}
+	//if len(proposal.Txs) == 0 {
+	//	time.Sleep(200 * time.Millisecond)
+	//}
 	// 通过内部chan传递到defaultSetproposal函数统一处理
 	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
 

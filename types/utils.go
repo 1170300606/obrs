@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	tmtime "github.com/tendermint/tendermint/types/time"
+	"time"
+)
 
 func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 	return &Block{
@@ -24,7 +27,7 @@ func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 func MakeBlock(txs []Tx) *Block {
 	block := &Block{
 		Header: Header{
-			ProposalTime: time.Now(),
+			ProposalTime: tmtime.Now(),
 		},
 		Data: Data{
 			Txs: txs,

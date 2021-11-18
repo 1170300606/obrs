@@ -83,7 +83,6 @@ func SetStateDB(db tmdb.DB) ListMempoolOption {
 
 func RegisteryMetric(metricSet *metric.MetricSet) ListMempoolOption {
 	return func(mem *ListMempool) {
-		fmt.Println("register mempool metrics")
 		if err := metricSet.SetMetrics("MEMPOOL", mem.metric); err != nil {
 			fmt.Println(err)
 		}

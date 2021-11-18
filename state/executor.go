@@ -7,8 +7,11 @@ import (
 	"errors"
 	"github.com/tendermint/tendermint/libs/log"
 	tmtime "github.com/tendermint/tendermint/types/time"
-	"math/rand"
 	"time"
+)
+
+const (
+	MaxBlockTxSize = 2000
 )
 
 type BlockExecutor interface {
@@ -87,7 +90,6 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 	return state, err
 }
 
-// TODO 当有多个可提交区块的时候，如何处理？
 // 函数的语义：在当前state下，尽力提交所有可以提交的区块，如果提交成功后更新mempool
 func (exec *blockExecutor) Commit(
 	state State,
@@ -99,7 +101,6 @@ func (exec *blockExecutor) Commit(
 	newState = state
 	for _, block := range toCommitblocks {
 		// TODO 当上一轮的区块提交失败时，是否要继续提交？
-		exec.logger.Info("commit block", "block", block.Hash())
 
 		// step 1 提交到状态数据库
 		resulthash, err := exec.stateDB.CommitBlock(state, block)
@@ -113,6 +114,10 @@ func (exec *blockExecutor) Commit(
 			exec.logger.Error("commit block failed when update mempool.", "err", err, "block", block.Hash())
 			continue
 		}
+
+		exec.logger.Info("commit block", "proposal", block.ProposalTime.UnixNano(),
+			"precommit", block.BlockPrecommitTime,
+			"commit", block.BlockCommitTime)
 
 		// step 3 更新state
 		tmpState := newState.Copy()
@@ -137,7 +142,7 @@ func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *typ
 
 	// step 2 reap all tx from mempool
 	// reap时候要选择没有冲突的交易
-	txs := exec.mempool.ReapMaxTxs(rand.Intn(2000) + 3000)
+	txs := exec.mempool.ReapMaxTxs(MaxBlockTxSize)
 	block := types.MakeBlock(txs)
 
 	// step 3将区块头填补完整
@@ -196,61 +201,60 @@ func (exec *blockExecutor) UpdateBlockState(block *types.Block, blockstate types
 	} else if blockstate == types.CommittedBlock {
 		//exec.mempool.Update(block.Slot, block.Txs)
 		block.MarkTime(types.BlockCommitTime, tmtime.Now().UnixNano())
+		block.CalculateTime()
 	}
 	block.BlockState = blockstate
 	return nil
 }
 
 func (exec *blockExecutor) UpdateState(state *State, proposal *types.Block) error {
-
 	if state.PubVal == nil {
 		// public validator为空 没法更新
 		return errors.New("validator public key is nil")
 	}
 	// 如果evidence quorum不为空，更新以往到区块的信息
-	if proposal.Evidences != nil {
-		for _, evidence := range proposal.Evidences {
-			blockhash := evidence.BlockHash
+	if proposal.Evidences == nil {
+		return nil
+	}
+	for _, evidence := range proposal.Evidences {
+		blockhash := evidence.BlockHash
 
-			block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
-			if block == nil {
-				continue
-			}
+		block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
+		if block == nil || block.BlockState == types.CommittedBlock {
+			// 已经提交的区块
+			continue
+		}
 
-			if block.BlockState == types.CommittedBlock {
-				// 已经提交的区块
-				continue
-			}
-			if block.Commit == nil {
-				block.Commit = &types.Commit{}
-			}
+		if block.Commit == nil {
+			block.Commit = &types.Commit{}
+		}
 
-			// TODO FIX
-			// 首先检验evidence的正确性 - 签名的正确性
-			//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
-			//	// evidence验证错误 跳过
-			//	exec.logger.Error("evidence is wrong.", "proposal", proposal)
-			//	continue
-			//}
+		// TODO FIX
+		// 首先检验evidence的正确性 - 签名的正确性
+		//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
+		//	// evidence验证错误 跳过
+		//	exec.logger.Error("evidence is wrong.", "proposal", proposal)
+		//	continue
+		//}
 
-			block.VoteQuorum = evidence
-			// 更新blockstate
-			if evidence.Type == types.SupportQuorum {
-				if block.BlockState != types.PrecommitBlock {
-					// 如果更改区块状态为precommit
-					block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
-					if err := exec.UpdateBlockState(block, types.PrecommitBlock); err != nil {
-						exec.logger.Error("update block state to precommit failed.", "err", err)
-						return err
-					}
-				}
-			} else if evidence.Type == types.AgainstQuorum {
-				if err := exec.UpdateBlockState(block, types.ErrorBlock); err != nil {
-					exec.logger.Error("update block state to error failed.", "err", err)
+		block.VoteQuorum = evidence
+		// 更新blockstate
+		if evidence.Type == types.SupportQuorum {
+			if block.BlockState != types.PrecommitBlock {
+				// 如果更改区块状态为precommit
+				block.MarkTime(types.BlockPrecommitTime, tmtime.Now().UnixNano())
+				if err := exec.UpdateBlockState(block, types.PrecommitBlock); err != nil {
+					exec.logger.Error("update block state to precommit failed.", "err", err)
 					return err
 				}
 			}
+		} else if evidence.Type == types.AgainstQuorum {
+			if err := exec.UpdateBlockState(block, types.ErrorBlock); err != nil {
+				exec.logger.Error("update block state to error failed.", "err", err)
+				return err
+			}
 		}
 	}
+
 	return nil
 }

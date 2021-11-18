@@ -23,6 +23,7 @@ const (
 	BlockProposalTime  = "proposal_time"
 	BlockPrecommitTime = "precommit_time"
 	BlockCommitTime    = "commit_time"
+	BlockSuspectTime   = "suspect_time"
 )
 
 func (state BlockState) String() string {
@@ -108,9 +109,13 @@ type Header struct {
 	BlockHash tmbytes.HexBytes `json:"block_hash"` // 当前区块的hash
 	Signature tmbytes.HexBytes `json:"signature"`  // 区块的签名，sign {chainID}{slot}{LastBlockHash}{TxsHash}{ValidatorsHash}{ResultHash}
 
-	// timestamp，调用computeTime之前，保存的是对应状态的时间戳
-	BlockPrecommitTime int64 `json:"precommit_time"` // 达成precommit状态的耗时
-	BlockCommitTime    int64 `json:"commit_time"`    // 达成precommit状态的耗时
+	// timestamp，保存的是对应状态的时间戳
+	BlockPrecommitTime int64 `json:"precommit_timestamp"` // 达成precommit状态的耗时
+	BlockCommitTime    int64 `json:"commit_timestamp"`    // 达成commit状态的耗时
+
+	TimePrecommit int64 `json:"precommit_time"` // 达成precommit状态的耗时
+	TimeCommit    int64 `json:"commit_time"`    // 达成commit状态的耗时
+	TimeConsensus int64 `json:"consensus_time"` // 达成commit的总耗时
 }
 
 func (h *Header) Fill(
@@ -148,10 +153,9 @@ func (h *Header) Hash() tmbytes.HexBytes {
 }
 
 func (h *Header) CalculateTime() {
-	precommitTime := h.BlockPrecommitTime - h.ProposalTime.UnixNano()
-	commitTime := h.BlockCommitTime - h.BlockPrecommitTime
-	h.BlockPrecommitTime = precommitTime
-	h.BlockCommitTime = commitTime
+	h.TimePrecommit = h.BlockPrecommitTime - h.ProposalTime.UnixNano()
+	h.TimeCommit = h.BlockCommitTime - h.BlockPrecommitTime
+	h.TimeConsensus = h.BlockCommitTime - h.ProposalTime.UnixNano()
 }
 
 func (h *Header) MarkTime(s string, t int64) {
