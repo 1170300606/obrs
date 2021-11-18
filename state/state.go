@@ -134,9 +134,18 @@ func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
 		}
 	}
 
-	if idx != -1 {
-		// 最后一个可以提交的区块开始，前面的区块都可以提交
-		toCommitBlocks = append(toCommitBlocks, blocks[0:idx+1]...)
+	if idx == -1 {
+		return toCommitBlocks
+	}
+	lastCommitedBlock := blocks[idx]
+	for true {
+		preHash := lastCommitedBlock.LastBlockHash
+		preBlock, err := state.BlockTree.QueryBlockByHash(preHash)
+		if err != nil || preBlock.BlockState == types.CommittedBlock {
+			break
+		}
+		toCommitBlocks = append(toCommitBlocks, preBlock)
+		lastCommitedBlock = preBlock
 	}
 
 	return toCommitBlocks
