@@ -98,7 +98,7 @@ func (conR *Reactor) OnStart() error {
 	proposalTime := conR.consensus.state.GenesisBlock().ProposalTime
 	diffs := float64(tmnow.Sub(proposalTime).Milliseconds()) / 1000.0
 
-	diffSlot := int(math.Ceil(diffs / slotTimeOut.Seconds()))
+	diffSlot := int(math.Ceil(diffs/slotTimeOut.Seconds())) + slotdiffs
 
 	// 计算理论上的启动时间 = 离创世区块时间最近的一个slot的起始时间
 	startTime := proposalTime.Add(time.Duration(diffSlot*int(slotTimeOut.Seconds())) * time.Second)

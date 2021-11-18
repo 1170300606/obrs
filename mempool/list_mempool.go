@@ -8,7 +8,10 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
+	tmtime "github.com/tendermint/tendermint/types/time"
 	tmdb "github.com/tendermint/tm-db"
+	"math/rand"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -171,7 +174,8 @@ func (mem *ListMempool) ReapTxs(maxBytes int64) types.Txs {
 }
 
 // Safe for concurrent use by multiple goroutines.
-func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
+// TODO 暂时变为随机生成
+func (mem *ListMempool) reapMaxTxs(max int) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
@@ -192,6 +196,51 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	}
 	mem.logger.Debug("reapped all txs", "size", len(txs))
 	return txs
+}
+
+func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
+	if max < 0 {
+		max = 2000
+	}
+	txs := make([]types.Tx, 0, max)
+
+	for i := 0; i < max; i++ {
+		tx := generateTx(200)
+		txs = append(txs, tx)
+	}
+	return txs
+}
+
+func generateTx(accounts int) *types.SmallBankTx {
+	tx := new(types.SmallBankTx)
+	tx.TxSendTimestamp = tmtime.Now().UnixNano()
+	switch rand.Intn(4) {
+	case 0:
+		tx.TxType = types.SBTransactionSavingTx
+		username := fmt.Sprintf("username%v", rand.Intn(accounts)+1)
+		v := rand.Intn(200)
+		tx.Args = []string{username, strconv.Itoa(v)}
+	case 1:
+		tx.TxType = types.SBWriteCheckingTx
+		username := fmt.Sprintf("username%v", rand.Intn(accounts)+1)
+		v := rand.Intn(200)
+		tx.Args = []string{username, strconv.Itoa(v)}
+	case 2:
+		tx.TxType = types.SBAmalgamateTx
+		username1 := fmt.Sprintf("username%v", rand.Intn(accounts)+1)
+		var username2 = username1
+		for username2 != username1 {
+			username2 = fmt.Sprintf("username%v", rand.Intn(accounts)+1)
+		}
+		tx.Args = []string{username1, username2}
+	case 3:
+		tx.TxType = types.SBDepositCheckingTx
+		username := fmt.Sprintf("username%v", rand.Intn(accounts)+1)
+		v := rand.Intn(200)
+		tx.Args = []string{username, strconv.Itoa(v)}
+	}
+
+	return tx
 }
 
 // Lock 锁定mempool的updateMtx读写锁的写锁
@@ -219,7 +268,7 @@ func (mem *ListMempool) Update(slot types.LTime, toRemoveTxs types.Txs) error {
 	return nil
 }
 
-// TODO toLockTxs变更状态
+// toLockTxs变更状态
 // Caller负责加锁
 func (mem *ListMempool) LockTxs(txs types.Txs) error {
 	for _, tx := range txs {

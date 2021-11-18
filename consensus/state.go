@@ -23,7 +23,8 @@ var (
 // 临时配置区
 const (
 	threshold          = 3
-	slotTimeOut        = 10 * time.Second  // 两个slot之间的间隔
+	slotTimeOut        = 5 * time.Second // 两个slot之间的间隔
+	slotdiffs          = 2
 	immediateTimeOut   = 0 * time.Second   //
 	initialSlotTimeout = 100 * time.Second // 节点启动后clock默认超时时间
 )
@@ -247,7 +248,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		// 收到新的提案
 		// TODO核验提案身份 - slot是否一致、提案人是否正确
 		if err := msg.Proposal.ValidteBasic(); err != nil {
-			cs.Logger.Error("receive wrong proposal.", "error", err, "proposal", msg.Proposal.Block)
+			cs.Logger.Debug("receive wrong proposal.", "error", err, "proposalHash", msg.Proposal.Hash())
 			return
 		}
 
@@ -257,7 +258,6 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 				cs.Logger.Error("set proposal failed.", "error", err)
 				return
 			}
-			cs.Logger.Debug("set proposal success.", "cur", cs.CurSlot, "proposer", cs.Proposer.Address)
 			cs.Logger.Info("set proposal success",
 				"slot", cs.CurSlot,
 				"txsSize", len(msg.Proposal.Txs),
@@ -342,7 +342,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 
 	// 如果切换成功，首先应该重新启动定时器
 	cs.slotClock.ResetClock(slotTimeOut)
-
+	cs.reviseSlotTime()
 	// 关于状态机的切换，是直接在这里调用下一轮的函数；
 	// 还是在统一的处理函数如handleStateMsg，然后根据不同的消息类型调用不同的阶段函数
 	cs.sendEventMessage(msgInfo{cstype.RoundEvent{cstype.RoundEventApply, cs.CurSlot}, ""})
@@ -401,7 +401,6 @@ func (cs *ConsensusState) enterApply() {
 
 		if quorum.Type == types.SupportQuorum {
 			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.PrecommitBlock)
-			cs.Proposal.Block.MarkTime(types.BlockPrecommitTime, time.Now().UnixNano())
 		} else if quorum.Type == types.AgainstQuorum {
 			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.ErrorBlock)
 		} else {
@@ -562,10 +561,10 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
-
+	cs.Logger.Info("generated proposal", "txSize", len(proposal.Txs), "proposalHash", proposal.Hash())
 	//// DEBUG 让广播慢一点 ????
 	if len(proposal.Txs) == 0 {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	// 通过内部chan传递到defaultSetproposal函数统一处理
 	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
@@ -584,11 +583,11 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 		// 判断提案是否符合发布规则
 		if cs.state.IsMatch(proposal) {
 			// 提案正确且符合提案规则，投赞成票
-			cs.Logger.Info("support vote", "proposalHash", proposal.Hash())
+			cs.Logger.Info("support vote", "slot", cs.CurSlot, "proposalHash", proposal.Hash())
 			cs.signVote(proposal, true)
 		} else {
 			// 投反对票
-			cs.Logger.Info("against vote", "proposalHash", proposal.Hash())
+			cs.Logger.Info("against vote", "slot", cs.CurSlot, "proposalHash", proposal.Hash())
 			cs.signVote(proposal, false)
 		}
 	}()

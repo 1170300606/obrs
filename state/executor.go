@@ -6,6 +6,8 @@ import (
 	"chainbft_demo/types"
 	"errors"
 	"github.com/tendermint/tendermint/libs/log"
+	tmtime "github.com/tendermint/tendermint/types/time"
+	"math/rand"
 	"time"
 )
 
@@ -94,9 +96,9 @@ func (exec *blockExecutor) Commit(
 	err error,
 ) {
 	newState = state
-	for idx, block := range toCommitblocks {
+	for _, block := range toCommitblocks {
 		// TODO 当上一轮的区块提交失败时，是否要继续提交？
-		exec.logger.Info("commit block", "state", state, "idx", idx)
+		exec.logger.Info("commit block", "block", block.Hash())
 
 		// step 1 提交到状态数据库
 		resulthash, err := exec.stateDB.CommitBlock(state, block)
@@ -110,14 +112,6 @@ func (exec *blockExecutor) Commit(
 			exec.logger.Error("commit block failed when update mempool.", "err", err, "block", block.Hash())
 			continue
 		}
-		//exec.mempool.Lock()
-		//
-		//if err := exec.mempool.Update(0, block.Txs); err != nil {
-		//	exec.logger.Error("Update tx in mempool failed.", "reason", err)
-		//	exec.mempool.Unlock()
-		//	continue
-		//}
-		//exec.mempool.Unlock()
 
 		// step 3 更新state
 		tmpState := newState.Copy()
@@ -142,7 +136,7 @@ func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *typ
 
 	// step 2 reap all tx from mempool
 	// reap时候要选择没有冲突的交易
-	txs := exec.mempool.ReapMaxTxs(-1)
+	txs := exec.mempool.ReapMaxTxs(rand.Intn(2000) + 3000)
 	block := types.MakeBlock(txs)
 
 	// step 3将区块头填补完整
@@ -188,12 +182,19 @@ func (exec *blockExecutor) validateBlock(state State, block *types.Block) error 
 }
 
 func (exec *blockExecutor) UpdateBlockState(block *types.Block, blockstate types.BlockState) error {
+	if block.BlockState == blockstate {
+		return nil
+	}
+
+	// TODO 暂时关闭和mempool的交互
 	if blockstate == types.PrecommitBlock {
-		exec.mempool.LockTxs(block.Txs)
+		//exec.mempool.LockTxs(block.Txs)
+		block.MarkTime(types.BlockPrecommitTime, tmtime.Now().UnixNano())
 	} else if blockstate == types.ErrorBlock {
-		exec.mempool.ReleaseTxs(block.Txs)
+		//exec.mempool.ReleaseTxs(block.Txs)
 	} else if blockstate == types.CommittedBlock {
-		exec.mempool.Update(block.Slot, block.Txs)
+		//exec.mempool.Update(block.Slot, block.Txs)
+		block.MarkTime(types.BlockCommitTime, tmtime.Now().UnixNano())
 	}
 	block.BlockState = blockstate
 	return nil
