@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/crypto"
-	tmjson "github.com/tendermint/tendermint/libs/json"
 )
 
 // Volatile state for each Validator
@@ -68,7 +67,7 @@ func (v *Validator) String() string {
 // which changes every round.
 func (v *Validator) Bytes() []byte {
 
-	pk, err := tmjson.Marshal(v.PubKey)
+	pk, err := json.Marshal(v.PubKey)
 	if err != nil {
 		panic(err)
 	}

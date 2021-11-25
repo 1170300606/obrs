@@ -1,7 +1,5 @@
 package types
 
-import tmjson "github.com/tendermint/tendermint/libs/json"
+import jsoniter "github.com/json-iterator/go"
 
-func init() {
-	tmjson.RegisterType(&SmallBankTx{}, "chainBFT/SmallBankTx")
-}
+var json = jsoniter.ConfigCompatibleWithStandardLibrary

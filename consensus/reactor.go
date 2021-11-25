@@ -3,9 +3,9 @@ package consensus
 import (
 	"chainbft_demo/types"
 	"fmt"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/events"
-	tmjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
@@ -14,6 +14,8 @@ import (
 	"math/rand"
 	"time"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	StateChannel       = byte(0x20)
@@ -153,7 +155,7 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		// 收到新的投票
 		var vote types.Vote
 
-		if err := tmjson.Unmarshal(msgBytes, &vote); err != nil {
+		if err := json.Unmarshal(msgBytes, &vote); err != nil {
 			conR.consensus.Logger.Error("try to unmarshal vote failed", "err", err, "msgBytes", msgBytes)
 			break
 		}
@@ -167,7 +169,7 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	case ProposalChannel:
 		var proposal types.Proposal
 
-		if err := tmjson.Unmarshal(msgBytes, &proposal); err != nil {
+		if err := json.Unmarshal(msgBytes, &proposal); err != nil {
 			conR.consensus.Logger.Error("try to unmarshal proposal failed", "err", err)
 			break
 		}
@@ -203,7 +205,7 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
-	pBytes, err := tmjson.Marshal(proposal)
+	pBytes, err := json.Marshal(proposal)
 	if err != nil {
 		conR.Logger.Error("Marshal Proposal failed.", "err", err)
 		conR.Logger.Debug("Marshal Proposal failed.", "proposal", proposal)
@@ -214,7 +216,7 @@ func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
 
 func (conR *Reactor) broadcastVote(vote *types.Vote) {
 	conR.Logger.Debug("prepare to send vote")
-	vBytes, err := tmjson.Marshal(vote)
+	vBytes, err := json.Marshal(vote)
 	if err != nil {
 		conR.Logger.Error("Marshal Vote failed.", "err", err)
 		conR.Logger.Debug("Marshal Vote failed.", "vote", vote)

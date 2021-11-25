@@ -5,10 +5,12 @@ import (
 	"chainbft_demo/libs/metric"
 	"chainbft_demo/mempool"
 	"chainbft_demo/state"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var (
-	env *Environment
+	env  *Environment
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 func SetEnvironment(e *Environment) {

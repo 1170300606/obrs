@@ -4,7 +4,6 @@ import (
 	meml "chainbft_demo/mempool"
 	"chainbft_demo/types"
 	"encoding/hex"
-	"encoding/json"
 	coretypes "github.com/tendermint/tendermint/rpc/core/types"
 
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"

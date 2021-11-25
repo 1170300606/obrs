@@ -9,7 +9,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmjson "github.com/tendermint/tendermint/libs/json"
+
 	tmos "github.com/tendermint/tendermint/libs/os"
 	tmtime "github.com/tendermint/tendermint/types/time"
 )
@@ -42,7 +42,7 @@ type GenesisDoc struct {
 
 // SaveAs is a utility method for saving GenensisDoc as a JSON file.
 func (genDoc *GenesisDoc) SaveAs(file string) error {
-	genDocBytes, err := tmjson.MarshalIndent(genDoc, "", "  ")
+	genDocBytes, err := json.MarshalIndent(genDoc, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (GenDoc *GenesisDoc) PublicValidator() *Validator {
 // GenesisDocFromJSON unmarshalls JSON data into a GenesisDoc.
 func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {
 	genDoc := GenesisDoc{}
-	err := tmjson.Unmarshal(jsonBlob, &genDoc)
+	err := json.Unmarshal(jsonBlob, &genDoc)
 	if err != nil {
 		return nil, err
 	}

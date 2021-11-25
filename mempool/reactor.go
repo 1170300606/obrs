@@ -2,8 +2,8 @@ package mempool
 
 import (
 	"chainbft_demo/types"
-	"encoding/json"
 	"fmt"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	MempoolChannel = byte(0x20)

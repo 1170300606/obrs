@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	cfg "github.com/tendermint/tendermint/config"
@@ -13,6 +14,8 @@ import (
 )
 
 var (
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
+
 	config = cfg.DefaultConfig()
 	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 

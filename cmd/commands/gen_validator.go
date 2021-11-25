@@ -6,7 +6,6 @@ import (
 
 	"chainbft_demo/privval"
 	"github.com/spf13/cobra"
-	tmjson "github.com/tendermint/tendermint/libs/json"
 )
 
 // GenValidatorCmd生成共识验证者的公私钥对
@@ -36,7 +35,7 @@ func genValidator(cmd *cobra.Command, args []string) {
 	}
 
 	pv := privval.GenFilePVWithSeedAndIdx(privValKeyFile, thres, idx, seed)
-	jsbz, err := tmjson.Marshal(pv)
+	jsbz, err := json.Marshal(pv)
 	if err != nil {
 		panic(err)
 	}

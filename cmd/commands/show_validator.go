@@ -4,7 +4,6 @@ import (
 	"chainbft_demo/privval"
 	"fmt"
 	"github.com/spf13/cobra"
-	tmjson "github.com/tendermint/tendermint/libs/json"
 	tmos "github.com/tendermint/tendermint/libs/os"
 )
 
@@ -29,7 +28,7 @@ func showValidator(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't get pubkey: %w", err)
 	}
 
-	bz, err := tmjson.Marshal(pubKey)
+	bz, err := json.Marshal(pubKey)
 	if err != nil {
 		return fmt.Errorf("failed to marshal private validator pubkey: %w", err)
 	}
