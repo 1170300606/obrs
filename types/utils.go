@@ -38,7 +38,7 @@ func MakeBlock(txs []Tx) *Block {
 
 func MakeEmptyProposal() *Proposal {
 	return &Proposal{
-		&Block{
+		Block: &Block{
 			Header:     Header{},
 			Data:       Data{Txs: Txs{}},
 			VoteQuorum: Quorum{},

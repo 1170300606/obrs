@@ -60,7 +60,7 @@ func genGenesisFile(cmd *cobra.Command, args []string) error {
 
 	genBlock := types.MakeGenesisBlock(chainID, time.Now())
 
-	signature, err := primary_priv.Sign(types.ProposalSignBytes(chainID, &types.Proposal{genBlock}))
+	signature, err := primary_priv.Sign(types.ProposalSignBytes(chainID, &types.Proposal{Block: genBlock}))
 	if err != nil {
 		logger.Error("生成quorum的签名出错", "err", err)
 	}
