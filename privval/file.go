@@ -5,14 +5,12 @@ import (
 	"chainbft_demo/crypto/threshold"
 	"chainbft_demo/types"
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/tendermint/tendermint/crypto"
+	tmjson "github.com/tendermint/tendermint/libs/json"
 	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/libs/tempfile"
 	"io/ioutil"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 //-------------------------------------------------------------------------------
 
@@ -32,7 +30,7 @@ func (pvKey FilePVKey) Save() {
 		panic("cannot save PrivValidator key: filePath not set")
 	}
 
-	jsonBytes, err := json.MarshalIndent(pvKey, "", "  ")
+	jsonBytes, err := tmjson.MarshalIndent(pvKey, "", "  ")
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +105,7 @@ func loadFilePV(keyFilePath string) *FilePV {
 		tmos.Exit(err.Error())
 	}
 	pvKey := FilePVKey{}
-	err = json.Unmarshal(keyJSONBytes, &pvKey)
+	err = tmjson.Unmarshal(keyJSONBytes, &pvKey)
 	if err != nil {
 		tmos.Exit(fmt.Sprintf("Error reading PrivValidator key from %v: %v\n", keyFilePath, err))
 	}

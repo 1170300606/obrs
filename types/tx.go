@@ -12,15 +12,15 @@ const (
 	ConsCommit    = "consensus_commit"
 )
 
-type Tx interface {
-	Hash() []byte
-	ComputeSize() int64
-	CalculateTime()
-	MarkTime(string, int64)
-}
+//type Tx interface {
+//	Hash() []byte
+//	ComputeSize() int64
+//	CalculateTime()
+//	MarkTime(string, int64)
+//}
 
 func NewTx() Tx {
-	return &SmallBankTx{}
+	return Tx{}
 }
 
 // ===== normal tx =====
@@ -80,25 +80,25 @@ var (
 	SBWriteCheckingTx     = SmallBankTxType("write_checking")
 )
 
-type SmallBankTx struct {
+type Tx struct {
 	TxType SmallBankTxType `json:"tx_type"`
 	Args   []string        `json:"args"`
 
 	// *timestamp$表示记录的是时间点，纳秒级，*Time$表示记录的是时间段，单位ms
 	// 在调用CalculateTime前，*Time记录的同样也是时间点，CalculateTime函数会计算正确的时间
-	TxSendTimestamp        int64 `json:"tx_send_timestamp"`        // 交易从客户端发出的时间
-	MempoolWaitTime        int64 `json:"mempool_wait_time"`        //mempool队列等待时间
-	ConsensusPrecommitTime int64 `json:"consensus_precommit_time"` // 第一段共识耗时
-	ConsensusCommitTime    int64 `json:"consensus_commit_time`     // 提交等待耗时
-	TxLatency              int64 `json:"latency"`                  // 交易延迟
+	TxSendTimestamp int64 `json:"tx_send_timestamp"` // 交易从客户端发出的时间
+	//MempoolWaitTime        int64 `json:"mempool_wait_time"`        //mempool队列等待时间
+	//ConsensusPrecommitTime int64 `json:"consensus_precommit_time"` // 第一段共识耗时
+	//ConsensusCommitTime    int64 `json:"consensus_commit_time`     // 提交等待耗时
+	//TxLatency              int64 `json:"latency"`                  // 交易延迟
 
-	MempoolAddTimestamp int64
-	ReapedTimestamp     int64
-	PrecommitTimestamp  int64
-	CommitTimestamp     int64
+	//MempoolAddTimestamp int64
+	//ReapedTimestamp     int64
+	//PrecommitTimestamp  int64
+	//CommitTimestamp     int64
 }
 
-func (tx *SmallBankTx) Hash() []byte {
+func (tx *Tx) Hash() []byte {
 	h := tmhash.New()
 	h.Write([]byte(tx.TxType))
 	for _, arg := range tx.Args {
@@ -108,7 +108,7 @@ func (tx *SmallBankTx) Hash() []byte {
 	return h.Sum([]byte{})
 }
 
-func (tx *SmallBankTx) ComputeSize() int64 {
+func (tx *Tx) ComputeSize() int64 {
 	s := 0
 	s += len(tx.TxType)
 
@@ -120,21 +120,21 @@ func (tx *SmallBankTx) ComputeSize() int64 {
 	return int64(s)
 }
 
-func (tx *SmallBankTx) CalculateTime() {
-	tx.MempoolWaitTime = tx.ReapedTimestamp - tx.MempoolAddTimestamp
-	tx.ConsensusPrecommitTime = tx.PrecommitTimestamp - tx.ReapedTimestamp
-	tx.ConsensusCommitTime = tx.CommitTimestamp - tx.ReapedTimestamp
-	tx.TxLatency = tx.CommitTimestamp - tx.TxSendTimestamp
+func (tx *Tx) CalculateTime() {
+	//tx.MempoolWaitTime = tx.ReapedTimestamp - tx.MempoolAddTimestamp
+	//tx.ConsensusPrecommitTime = tx.PrecommitTimestamp - tx.ReapedTimestamp
+	//tx.ConsensusCommitTime = tx.CommitTimestamp - tx.ReapedTimestamp
+	//tx.TxLatency = tx.CommitTimestamp - tx.TxSendTimestamp
 }
 
-func (tx *SmallBankTx) MarkTime(s string, t int64) {
+func (tx *Tx) MarkTime(s string, t int64) {
 	if s == MempoolAdd {
-		tx.MempoolAddTimestamp = t
+		//tx.MempoolAddTimestamp = t
 	} else if s == MempoolReap {
-		tx.ReapedTimestamp = t
+		//tx.ReapedTimestamp = t
 	} else if s == "consensus_precommit" {
-		tx.PrecommitTimestamp = t
+		//tx.PrecommitTimestamp = t
 	} else if s == "consensus_commit" {
-		tx.CommitTimestamp = t
+		//tx.CommitTimestamp = t
 	}
 }

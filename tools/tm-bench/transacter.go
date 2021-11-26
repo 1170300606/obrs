@@ -249,8 +249,8 @@ func connect(host string) (*websocket.Conn, *http.Response, error) {
 	return websocket.DefaultDialer.Dial(u.String(), nil)
 }
 
-func generateTx(accounts int) *types.SmallBankTx {
-	tx := new(types.SmallBankTx)
+func generateTx(accounts int) *types.Tx {
+	tx := new(types.Tx)
 
 	switch rand.Intn(4) {
 	case 0:

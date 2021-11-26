@@ -25,7 +25,7 @@ func connect(host string) (*websocket.Conn, *http.Response, error) {
 func main() {
 	c, resp, err := connect("127.0.0.1:26657")
 	fmt.Println(resp, err)
-	sbtx := types.SmallBankTx{
+	sbtx := types.Tx{
 		TxType: types.SBTransactionSavingTx,
 		Args:   []string{"Tom", "100"},
 	}

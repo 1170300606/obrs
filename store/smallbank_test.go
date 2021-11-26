@@ -53,7 +53,7 @@ func TestSBDepositChecking(t *testing.T) {
 	testdb := NewKVStore("test", "/tmp/chainbft/testdb", log.TestingLogger())
 	customID := initaccount(testdb.kvDB, username, 100, 10)
 
-	tx := &types.SmallBankTx{
+	tx := &types.Tx{
 		TxType: types.SBDepositCheckingTx,
 		Args:   []string{username, "1000"},
 	}
@@ -74,7 +74,7 @@ func TestSBTransationSaving(t *testing.T) {
 	testdb := NewKVStore("test", "/tmp/chainbft/testdb", log.TestingLogger())
 	customID := initaccount(testdb.kvDB, username, 100, 10)
 
-	tx := &types.SmallBankTx{
+	tx := &types.Tx{
 		TxType: types.SBTransactionSavingTx,
 		Args:   []string{username, "90"},
 	}
@@ -97,7 +97,7 @@ func TestSBAmalgamate(t *testing.T) {
 	customID1 := initaccount(testdb.kvDB, username1, 100, 90)
 	customID2 := initaccount(testdb.kvDB, username2, 10, 10)
 
-	tx := &types.SmallBankTx{
+	tx := &types.Tx{
 		TxType: types.SBAmalgamateTx,
 		Args:   []string{username1, username2},
 	}
@@ -126,7 +126,7 @@ func TestWriteCheck(t *testing.T) {
 
 	{
 		// total <= v
-		tx := &types.SmallBankTx{
+		tx := &types.Tx{
 			TxType: types.SBWriteCheckingTx,
 			Args:   []string{username, "80"},
 		}
@@ -145,7 +145,7 @@ func TestWriteCheck(t *testing.T) {
 
 	{
 		// total > v
-		tx := &types.SmallBankTx{
+		tx := &types.Tx{
 			TxType: types.SBWriteCheckingTx,
 			Args:   []string{username, "111"},
 		}

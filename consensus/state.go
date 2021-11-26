@@ -12,6 +12,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
+	tmtime "github.com/tendermint/tendermint/types/time"
 	"sync"
 	"time"
 )
@@ -240,9 +241,10 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 	defer cs.mtx.Unlock()
 
 	msg, peerID := mi.Msg, mi.PeerID
-
+	enterTime := time.Now()
 	switch msg := msg.(type) {
 	case *ProposalMessage:
+		//networkTime := time.Now().Sub(msg.Proposal.SendTime)
 		// 收到新的提案
 		// TODO核验提案身份 - slot是否一致、提案人是否正确
 		if err := msg.Proposal.ValidteBasic(); err != nil {
@@ -262,6 +264,12 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 				"txsHash", msg.Proposal.Txs.Hash(),
 				"proposalHash", msg.Proposal.Hash())
 
+			cs.Logger.Debug(fmt.Sprintf("[proposal] %v", msg.Proposal.ValidatorAddr),
+				"slot", cs.CurSlot, // 当前slot的信息
+				"val", cs.ValIndex, // 节点自己
+				"run", time.Now().Sub(cs.curSlotStartTime),
+				"total", tmtime.Now().Sub(msg.Proposal.ProposalTime),
+				"network", enterTime.Sub(msg.Proposal.ProposalTime))
 		} else {
 			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
 		}
@@ -269,6 +277,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
 		// 根据added，来决定是否转发该投票，只有正确加入voteset的投票才可以继续转发
 		// added为false不代表vote不合法，可能只是已经添加过了
+
 		added, err := cs.TryAddVote(msg.Vote, peerID)
 		if err != nil {
 			// TODO
@@ -277,6 +286,11 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		}
 		if added {
 			// 向reactor转发该消息
+			cs.Logger.Debug(fmt.Sprintf("[vote] %v:%v", msg.Vote.ValidatorIndex, msg.Vote.Type.String()),
+				"slot", cs.CurSlot, // 当前slot的信息
+				"val", cs.ValIndex, // 节点自己
+				"run", time.Now().Sub(cs.curSlotStartTime),
+				"network", time.Now().Sub(msg.Vote.Timestamp))
 			cs.Logger.Debug("add vote success. preprare to broadcast vote", "vote", msg.Vote)
 			cs.eventSwitch.FireEvent(EventNewVote, msg.Vote)
 		}

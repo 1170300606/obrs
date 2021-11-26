@@ -55,7 +55,7 @@ func BlockTree(ctx *rpctypes.Context) (*ResultBlockTree, error) {
 		oblock.CalculateTime()
 		txsLatency := make([]float64, 0, len(oblock.Txs))
 		for i := 0; i < len(oblock.Txs); i++ {
-			sbtx, _ := oblock.Txs[i].(*types.SmallBankTx)
+			sbtx := oblock.Txs[i]
 			txLatency := float64(oblock.BlockCommitTime - sbtx.TxSendTimestamp)
 			if txLatency > 0 {
 				txsLatency = append(txsLatency, txLatency/1e9)
@@ -120,7 +120,7 @@ func performance(ctx *rpctypes.Context, start, end int) (*ResultPerformance, err
 		lastCommittedBlock = oblock
 		txsLatency := make([]float64, 0, len(oblock.Txs))
 		for i := 0; i < len(oblock.Txs); i++ {
-			sbtx, _ := oblock.Txs[i].(*types.SmallBankTx)
+			sbtx := oblock.Txs[i]
 			txLatency := float64(oblock.BlockCommitTime - sbtx.TxSendTimestamp)
 			if txLatency > 0 {
 				txsLatency = append(txsLatency, txLatency/1e9)

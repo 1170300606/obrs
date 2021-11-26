@@ -13,6 +13,9 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"net/http"
+	_ "net/http/pprof"
 )
 
 var (
@@ -133,6 +136,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				}
 			})
 
+			http.ListenAndServe("0.0.0.0:8080", nil)
 			// Run forever.
 			select {}
 		},

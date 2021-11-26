@@ -78,7 +78,7 @@ func (kv *KVStore) CommitBlock(s state.State, block *types.Block) ([]byte, error
 }
 
 func (kv *KVStore) applySmallBank(batch tmdb.Batch, tx types.Tx) error {
-	sbtx := tx.(*types.SmallBankTx)
+	sbtx := tx
 	switch sbtx.TxType {
 	case types.SBBalanceTx:
 		// query, continue

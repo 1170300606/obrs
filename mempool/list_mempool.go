@@ -205,13 +205,13 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 
 	for i := 0; i < max; i++ {
 		tx := generateTx(200)
-		txs = append(txs, tx)
+		txs = append(txs, *tx)
 	}
 	return txs
 }
 
-func generateTx(accounts int) *types.SmallBankTx {
-	tx := new(types.SmallBankTx)
+func generateTx(accounts int) *types.Tx {
+	tx := new(types.Tx)
 	tx.TxSendTimestamp = tmtime.Now().UnixNano()
 	switch rand.Intn(4) {
 	case 0:

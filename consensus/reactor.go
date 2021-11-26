@@ -169,10 +169,12 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	case ProposalChannel:
 		var proposal types.Proposal
 
+		start := time.Now()
 		if err := json.Unmarshal(msgBytes, &proposal); err != nil {
 			conR.consensus.Logger.Error("try to unmarshal proposal failed", "err", err)
 			break
 		}
+		conR.Logger.Debug("[unmarshal]", "cost", time.Now().Sub(start), "blocksize", float64(len(msgBytes))/1024/1024)
 
 		conR.Logger.Debug(fmt.Sprintf("Receive proposal from #{%v}", src.ID()), "proposal", proposal)
 		conR.consensus.peerMsgQueue <- msgInfo{
@@ -205,12 +207,15 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastProposal(proposal *types.Proposal) {
+	//proposal.SendTime = time.Now()
 	pBytes, err := json.Marshal(proposal)
+	//conR.Logger.Info("[marshal]", "cost", time.Now().Sub(proposal.SendTime), "blocksize", float64(len(pBytes))/1024/1024)
 	if err != nil {
 		conR.Logger.Error("Marshal Proposal failed.", "err", err)
 		conR.Logger.Debug("Marshal Proposal failed.", "proposal", proposal)
 	}
 	conR.Logger.Debug("ready to broadcast Proposal ", "proposal", proposal)
+	//conR.Logger.Info("proposal", "byte", len(pBytes), "kbyte", len(pBytes)/1024)
 	conR.Switch.Broadcast(ProposalChannel, pBytes)
 }
 
@@ -222,6 +227,8 @@ func (conR *Reactor) broadcastVote(vote *types.Vote) {
 		conR.Logger.Debug("Marshal Vote failed.", "vote", vote)
 	}
 	conR.Logger.Debug("ready to broadcast Vote", "vote", vote)
+	conR.Logger.Info("ready to broadcast Vote", "byte", len(vBytes), "kbyte", len(vBytes)/1024)
+
 	conR.Switch.Broadcast(VoteChannel, vBytes)
 }
 

@@ -13,9 +13,9 @@ import (
 	//"golang.org/x/exp/rand"
 	"math/rand"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmjson "github.com/tendermint/tendermint/libs/json"
 )
 
 //-------------------------------------
@@ -27,7 +27,6 @@ var (
 	ErrWrongBLSPriv       = errors.New("bls private key is wrong")
 	ErrAggregateSignature = errors.New("Error in BLS aggregate process")
 	bn256_suite           = bn256.NewSuite()
-	json                  = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 const (
@@ -46,6 +45,11 @@ const (
 
 	KeyType = "bls"
 )
+
+func init() {
+	tmjson.RegisterType(PubKey{}, PubKeyName)
+	tmjson.RegisterType(PrivKey{}, PrivKeyName)
+}
 
 // PrivKey implements crypto.PrivKey.
 type PrivKey []byte
