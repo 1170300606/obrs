@@ -1,6 +1,7 @@
 package mempool
 
 import (
+	"chainbft_demo/crypto/bls"
 	"chainbft_demo/libs/metric"
 	"chainbft_demo/types"
 	"crypto/sha256"
@@ -204,13 +205,14 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	txs := make([]types.Tx, 0, max)
 
 	for i := 0; i < max; i++ {
-		tx := generateTx(200)
+		priv := bls.GenPrivKeyWithSeed(1314)
+		tx := generateTx(200, priv)
 		txs = append(txs, *tx)
 	}
 	return txs
 }
 
-func generateTx(accounts int) *types.Tx {
+func generateTx(accounts int, privKey bls.PrivKey) *types.Tx {
 	tx := new(types.Tx)
 	tx.TxSendTimestamp = tmtime.Now().UnixNano()
 	switch rand.Intn(4) {
@@ -239,6 +241,8 @@ func generateTx(accounts int) *types.Tx {
 		tx.Args = []string{username, strconv.Itoa(v)}
 	}
 
+	tx.PublicKey = privKey.PubKey().Bytes()
+	tx.Signature, _ = privKey.Sign(tx.Hash())
 	return tx
 }
 
