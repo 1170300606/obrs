@@ -202,11 +202,14 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 		max = 2000
 	}
 	txs := make([]types.Tx, 0, max)
+	start := time.Now()
 
 	for i := 0; i < max; i++ {
 		tx := generateTx(200)
 		txs = append(txs, *tx)
 	}
+
+	mem.logger.Info("reap txs", "cost(ms)", time.Now().Sub(start).Milliseconds())
 	return txs
 }
 

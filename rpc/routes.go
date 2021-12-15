@@ -11,4 +11,6 @@ var Routes = map[string]*rpc.RPCFunc{
 	"init_account": rpc.NewRPCFunc(InitSmallBankAccount, "name,saving,checking"),
 
 	"metrics": rpc.NewRPCFunc(JSONMetrics, "label"),
+
+	"net_info": rpc.NewRPCFunc(NetInfo, ""),
 }

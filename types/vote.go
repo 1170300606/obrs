@@ -34,6 +34,13 @@ type Vote struct {
 	ValidatorAddress Address          `json:"validator_address"`
 	ValidatorIndex   int32            `json:"validator_index"`
 	Signature        tmbytes.HexBytes `json:"signature"`
+
+	// for DEBUG
+	SendTime    time.Time `json:"send_time"`
+	Round       int       `json:"gossip_round"`
+	From        int       `json:"from"`
+	ReceiveTime time.Time
+	ByteSize    float64
 }
 
 // Equal 并不是判断两个vote是否一样，而是判断这两个投票的人和发布的时间是否一致

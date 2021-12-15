@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
@@ -181,12 +182,23 @@ func createMempoolReactor(
 	return memR, mem
 }
 
+func FastMConnConfig() conn.MConnConfig {
+	return conn.MConnConfig{
+		SendRate:                1024 * 1024 * 10, // 1MB/s
+		RecvRate:                1024 * 1024 * 10, // 1MB/s
+		MaxPacketMsgPayloadSize: 22020096,
+		FlushThrottle:           100 * time.Millisecond,
+		PingInterval:            60 * time.Second,
+		PongTimeout:             45 * time.Second,
+	}
+}
+
 func createTransport(
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 ) *p2p.MultiplexTransport {
 	var (
-		mConnConfig = conn.DefaultMConnConfig()
+		mConnConfig = FastMConnConfig()
 		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
 	)
 
@@ -340,10 +352,12 @@ func (n *Node) OnStart() error {
 func (n *Node) startRPC(logger log.Logger) ([]net.Listener, error) {
 	// setup rpc enviroment
 	rpc.SetEnvironment(&rpc.Environment{
+		Logger:    n.Logger.With("module", "rpc"),
 		Mempool:   n.mempool,
 		Consensus: n.conS,
 		Store:     n.storeDB,
 		MetricSet: n.metricSet,
+		P2PPeers:  n.sw,
 	})
 
 	config := server.DefaultConfig()

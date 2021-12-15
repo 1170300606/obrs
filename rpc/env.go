@@ -6,6 +6,8 @@ import (
 	"chainbft_demo/mempool"
 	"chainbft_demo/state"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/p2p"
 )
 
 var (
@@ -18,9 +20,13 @@ func SetEnvironment(e *Environment) {
 }
 
 type Environment struct {
+	Logger log.Logger
+
 	Mempool   mempool.Mempool
 	Consensus *consensus.ConsensusState
 	Store     state.Store
 
 	MetricSet *metric.MetricSet
+
+	P2PPeers *p2p.Switch
 }

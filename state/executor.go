@@ -168,7 +168,9 @@ func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *typ
 		"proposalHash", block.Hash())
 
 	return &types.Proposal{
-		Block: block,
+		Block:       block,
+		SendTime:    time.Now(),
+		ReceiveTime: time.Now(),
 	}
 }
 

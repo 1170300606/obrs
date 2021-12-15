@@ -12,7 +12,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
-	tmtime "github.com/tendermint/tendermint/types/time"
 	"sync"
 	"time"
 )
@@ -25,7 +24,7 @@ var (
 var (
 	Threshold   = 3
 	SlotTimeOut = 2 * time.Second // 两个slot之间的间隔
-	Slotdiffs   = 5
+	Slotdiffs   = 3
 )
 
 // 共识状态机实现
@@ -65,6 +64,8 @@ type ConsensusState struct {
 	curSlotStartTime time.Time // 当前slot启动的绝对时间
 
 	metric *consensusMetric
+
+	gossipDebugLogger log.Logger
 }
 
 type ConsensusOption func(*ConsensusState)
@@ -134,6 +135,8 @@ func NewConsensusState(
 
 func (cs *ConsensusState) SetLogger(logger log.Logger) {
 	cs.Logger = logger
+	cs.gossipDebugLogger = logger.With("label", "gossip-debug")
+
 	if cs.slotClock != nil {
 		cs.slotClock.SetLogger(logger)
 	}
@@ -241,7 +244,6 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 	defer cs.mtx.Unlock()
 
 	msg, peerID := mi.Msg, mi.PeerID
-	enterTime := time.Now()
 	switch msg := msg.(type) {
 	case *ProposalMessage:
 		//networkTime := time.Now().Sub(msg.Proposal.SendTime)
@@ -252,24 +254,34 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 			return
 		}
 
+		cs.gossipDebugLogger.Info("received proposal",
+			"slot", msg.Proposal.Slot,
+			"nodeid", cs.ValIndex,
+			"round", msg.Proposal.Round,
+			"txs", len(msg.Proposal.Txs),
+			"MBsize", msg.Proposal.MBSize,
+			"network time(ms)", msg.Proposal.ReceiveTime.Sub(msg.Proposal.SendTime).Milliseconds(),
+			"total time(ms)", msg.Proposal.ReceiveTime.Round(0).Sub(msg.Proposal.ProposalTime).Milliseconds(),
+		)
 		if cs.Proposal == nil || cs.Proposal.BlockState == types.DefaultBlock {
 			// 如果不为DefaultBlock 说明节点已经收到一个有效的提案了 不再接受其他提案
+			receiveTime := msg.Proposal.ReceiveTime
+			pround := msg.Proposal.Round
+			sendTime := msg.Proposal.SendTime
 			if err := cs.setProposal(msg.Proposal); err != nil {
 				cs.Logger.Error("set proposal failed.", "error", err)
 				return
 			}
-			cs.Logger.Info("set proposal success",
-				"slot", cs.CurSlot,
-				"txsSize", len(msg.Proposal.Txs),
-				"txsHash", msg.Proposal.Txs.Hash(),
-				"proposalHash", msg.Proposal.Hash())
 
-			cs.Logger.Debug(fmt.Sprintf("[proposal] %v", msg.Proposal.ValidatorAddr),
-				"slot", cs.CurSlot, // 当前slot的信息
-				"val", cs.ValIndex, // 节点自己
-				"run", time.Now().Sub(cs.curSlotStartTime),
-				"total", tmtime.Now().Sub(msg.Proposal.ProposalTime),
-				"network", enterTime.Sub(msg.Proposal.ProposalTime))
+			cs.Logger.Info("set proposal success",
+				"slot", msg.Proposal.Slot,
+				"nodeid", cs.ValIndex,
+				"round", pround,
+				"txs", len(msg.Proposal.Txs),
+				"MBsize", msg.Proposal.MBSize,
+				"network time(ms)", receiveTime.Sub(sendTime).Milliseconds(),
+				"total time(ms)", receiveTime.Round(0).Sub(msg.Proposal.ProposalTime).Milliseconds(),
+			)
 		} else {
 			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
 		}
@@ -285,17 +297,19 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 			return
 		}
 		if added {
+			//cs.Logger.Info("added vote",
+			//	"slot", msg.Vote.Slot,
+			//	"nodeid", cs.ValIndex,
+			//	"round", msg.Vote.Round,
+			//	"Bytesize", msg.Vote.ByteSize,
+			//	"network time(ms)", msg.Vote.ReceiveTime.Sub(msg.Vote.SendTime).Milliseconds(),
+			//	"total time(ms)", msg.Vote.ReceiveTime.Round(0).Sub(cs.Proposal.SendTime).Milliseconds(),
+			//)
+
 			// 向reactor转发该消息
-			cs.Logger.Debug(fmt.Sprintf("[vote] %v:%v", msg.Vote.ValidatorIndex, msg.Vote.Type.String()),
-				"slot", cs.CurSlot, // 当前slot的信息
-				"val", cs.ValIndex, // 节点自己
-				"run", time.Now().Sub(cs.curSlotStartTime),
-				"network", time.Now().Sub(msg.Vote.Timestamp))
-			cs.Logger.Debug("add vote success. preprare to broadcast vote", "vote", msg.Vote)
 			cs.eventSwitch.FireEvent(EventNewVote, msg.Vote)
 		}
 	}
-
 }
 
 // 状态机转移函数
@@ -564,6 +578,7 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
 	proposal.SlotStartTime = cs.curSlotStartTime
+	proposal.From = int(cs.ValIndex)
 
 	// step 3 生成签名
 	if err := cs.PrivVal.SignProposal(cs.state.ChainID, proposal); err != nil {
@@ -579,7 +594,10 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	//	time.Sleep(200 * time.Millisecond)
 	//}
 	// 通过内部chan传递到defaultSetproposal函数统一处理
-	cs.sendInternalMessage(msgInfo{&ProposalMessage{Proposal: proposal}, ""})
+
+	cs.sendInternalMessage(msgInfo{&ProposalMessage{
+		Proposal: proposal,
+	}, ""})
 
 	return proposal
 }
@@ -659,6 +677,11 @@ func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
 		ValidatorAddress: cs.state.Validator.Address,
 		ValidatorIndex:   cs.ValIndex,
 		Signature:        []byte("signature"),
+
+		SendTime:    time.Now(),
+		ReceiveTime: time.Now(),
+		Round:       0,
+		From:        int(cs.ValIndex),
 	}
 
 	if err := cs.PrivVal.SignVote(cs.state.ChainID, vote); err != nil {
@@ -756,7 +779,6 @@ func (cs *ConsensusState) updateStep(step cstype.RoundStepType) {
 	cs.Step = step
 }
 
-// send a msg into the receiveRoutine regarding our own proposal, block part, or vote
 // 往内部的channel写入event
 // 直接写可能会因为ceiveRoutine blocked从而导致本协程block
 func (cs *ConsensusState) sendEventMessage(mi msgInfo) {
