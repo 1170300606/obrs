@@ -1,8 +1,10 @@
 package types
 
 import (
+	"crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 )
 
 const (
@@ -87,6 +89,10 @@ type Tx struct {
 	// *timestamp$表示记录的是时间点，纳秒级，*Time$表示记录的是时间段，单位ms
 	// 在调用CalculateTime前，*Time记录的同样也是时间点，CalculateTime函数会计算正确的时间
 	TxSendTimestamp int64 `json:"tx_send_timestamp"` // 交易从客户端发出的时间
+
+	Signature tmbytes.HexBytes `json:"signature"`
+	PublicKey tmbytes.HexBytes `json:"public_key"`
+
 	//MempoolWaitTime        int64 `json:"mempool_wait_time"`        //mempool队列等待时间
 	//ConsensusPrecommitTime int64 `json:"consensus_precommit_time"` // 第一段共识耗时
 	//ConsensusCommitTime    int64 `json:"consensus_commit_time`     // 提交等待耗时
@@ -96,6 +102,12 @@ type Tx struct {
 	//ReapedTimestamp     int64
 	//PrecommitTimestamp  int64
 	//CommitTimestamp     int64
+}
+
+func (tx *Tx) Valid() bool {
+	pubkey := ed25519.PublicKey(tx.PublicKey)
+	return pubkey != nil && ed25519.Verify(pubkey, tx.Hash(), tx.Signature)
+	//return pubkey != nil && pubkey.VerifySignature(tx.Hash(), tx.Signature)
 }
 
 func (tx *Tx) Hash() []byte {
@@ -111,6 +123,8 @@ func (tx *Tx) Hash() []byte {
 func (tx *Tx) ComputeSize() int64 {
 	s := 0
 	s += len(tx.TxType)
+	s += len(tx.Signature)
+	s += len(tx.PublicKey)
 
 	for _, arg := range tx.Args {
 		s += len([]byte(arg))

@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	tmtime "github.com/tendermint/tendermint/types/time"
@@ -205,7 +207,9 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	start := time.Now()
 
 	for i := 0; i < max; i++ {
-		tx := generateTx(200)
+		priv := ed25519.GenPrivKey()
+		tx := generateTx(200, priv)
+		mem.logger.Info("txtxtx", "size", tx.ComputeSize())
 		txs = append(txs, *tx)
 	}
 
@@ -213,7 +217,7 @@ func (mem *ListMempool) ReapMaxTxs(max int) types.Txs {
 	return txs
 }
 
-func generateTx(accounts int) *types.Tx {
+func generateTx(accounts int, privKey crypto.PrivKey) *types.Tx {
 	tx := new(types.Tx)
 	tx.TxSendTimestamp = tmtime.Now().UnixNano()
 	switch rand.Intn(4) {
@@ -242,6 +246,8 @@ func generateTx(accounts int) *types.Tx {
 		tx.Args = []string{username, strconv.Itoa(v)}
 	}
 
+	tx.PublicKey = privKey.PubKey().Bytes()
+	tx.Signature, _ = privKey.Sign(tx.Hash())
 	return tx
 }
 

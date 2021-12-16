@@ -575,10 +575,12 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	// 特殊，提案前先更新状态
 	cs.updateStep(cstype.RoundStepPropose)
 
+	start := time.Now()
 	// step 2 从mempool中打包没有冲突的交易
 	proposal := cs.blockExec.CreateProposal(cs.state, cs.CurSlot)
 	proposal.SlotStartTime = cs.curSlotStartTime
 	proposal.From = int(cs.ValIndex)
+	cs.Logger.Info("block generate", "cost", time.Now().Sub(start).Milliseconds())
 
 	// step 3 生成签名
 	if err := cs.PrivVal.SignProposal(cs.state.ChainID, proposal); err != nil {
@@ -589,10 +591,7 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	// 向reactor传递block
 	cs.Logger.Debug("got proposal", "proposal", proposal)
 	cs.Logger.Info("generated proposal", "txSize", len(proposal.Txs), "proposalHash", proposal.Hash())
-	//// DEBUG 让广播慢一点 ????
-	//if len(proposal.Txs) == 0 {
-	//	time.Sleep(200 * time.Millisecond)
-	//}
+
 	// 通过内部chan传递到defaultSetproposal函数统一处理
 
 	cs.sendInternalMessage(msgInfo{&ProposalMessage{
@@ -642,6 +641,16 @@ func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
 	if !cs.isProposer(val) {
 		return errors.New(fmt.Sprintf("%v is not this slot leader, expected: %v", val.String(), cs.Proposer.String()))
 	}
+
+	start := time.Now()
+	// 验证交易签名的正确性
+	for _, tx := range proposal.Txs {
+		if !tx.Valid() {
+			cs.Logger.Error("block contains invaild transaction", "tx", tx)
+			return errors.New("block contains invaild transaction")
+		}
+	}
+	cs.Logger.Info("all tx is valid.", "cost(ms)", time.Now().Sub(start).Milliseconds())
 
 	// 验证提案的签名
 	if !val.PubKey.VerifySignature(types.ProposalSignBytes(cs.state.ChainID, proposal), proposal.Signature) {
