@@ -5,6 +5,7 @@ import (
 	"chainbft_demo/libs/metric"
 	"chainbft_demo/state"
 	"chainbft_demo/types"
+	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/events"
@@ -583,8 +584,48 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	return proposal
 }
 
+// TryAddVote 收到投票后尝试将投票加到对应的区块上
+// 如果返回(true,nil)则添加成功 如果返回(false,err)则投票本身有问题；否则返回(false,nil)说明投票已经添加过了
+func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
+	// 验证投票的合法性 - 签名
+	valIdx, val := cs.Validators.GetByAddress(vote.ValidatorAddress)
+	if valIdx != vote.ValidatorIndex {
+		return false, errors.New(fmt.Sprintf("vote validator has wrong index"))
+	}
+
+	// 验证投票的签名
+	if !val.PubKey.VerifySignature(types.VoteSignBytes(cs.state.ChainID, vote), vote.Signature) {
+		return false, errors.New("vote signature error")
+	}
+
+	err := cs.VoteSet.AddVote(vote)
+	if err != nil {
+		return false, err
+	}
+	cs.Logger.Debug("receive vote.", "src", peerID, "attitude", vote.Type)
+	return true, nil
+}
+
+func (cs *ConsensusState) TryAddFutureProposal(slot types.LTime, proposal types.Proposal) error {
+	_, exist := cs.futureProposal[slot]
+	if exist {
+		return errors.New(fmt.Sprintf("%v slot already exist", slot))
+	}
+
+	cs.futureProposal[slot] = proposal
+
+	return nil
+}
+
+func (cs *ConsensusState) triggleFutureProposal(slot types.LTime) {
+	proposal, exist := cs.futureProposal[slot]
+	if !exist {
+		return
+	}
+	cs.setProposal(&proposal)
+}
+
 // reviseSlotTime 根据最后一个commit的block里的slot time来统一校正时间
-// 可能需要修改
 func (cs *ConsensusState) reviseSlotTime() {
 	if cs.state.LastCommitedBlock == nil {
 		return
