@@ -5,7 +5,6 @@ import (
 	"chainbft_demo/libs/metric"
 	"chainbft_demo/state"
 	"chainbft_demo/types"
-	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/events"
@@ -90,7 +89,7 @@ func NewDefaultConsensusState(
 			SetValidtor(privVal)}, options...)...,
 	)
 	cs.decideProposal = cs.defaultProposal
-	cs.setProposal = cs.defaultSetProposal
+	//cs.setProposal = cs.defaultSetProposal
 
 	return cs
 }
@@ -133,6 +132,7 @@ func NewConsensusState(
 	return cs
 }
 
+// 日志函数，保留
 func (cs *ConsensusState) SetLogger(logger log.Logger) {
 	cs.Logger = logger
 	cs.gossipDebugLogger = logger.With("label", "gossip-debug")
@@ -142,6 +142,7 @@ func (cs *ConsensusState) SetLogger(logger log.Logger) {
 	}
 }
 
+// 认证者设置函数，保留
 func SetValidtor(validator types.PrivValidator) ConsensusOption {
 	return func(cs *ConsensusState) {
 		// 设置validator index
@@ -167,6 +168,7 @@ func RegisterMetric(metricSet *metric.MetricSet) ConsensusOption {
 	}
 }
 
+//共识入口
 func (cs *ConsensusState) OnStart() error {
 	go cs.receiveRoutine()
 	go cs.receiveEventRoutine()
@@ -174,6 +176,7 @@ func (cs *ConsensusState) OnStart() error {
 	return nil
 }
 
+//共识出口
 func (cs *ConsensusState) OnStop() {
 	if err := cs.eventSwitch.Stop(); err != nil {
 		cs.Logger.Error("failed trying to stop eventSwitch", "error", err)
@@ -191,6 +194,7 @@ func (cs *ConsensusState) OnStop() {
 
 // receiveRoutine负责接收所有的消息
 // 将原始的消息分类，传递给handleMsg
+// 与原来的分别是没有内部投票信息，删除了该条的消息处理
 func (cs *ConsensusState) receiveRoutine() {
 	cs.Logger.Debug("consensus receive rountine starts.")
 	for {
@@ -201,10 +205,6 @@ func (cs *ConsensusState) receiveRoutine() {
 
 		case msginfo := <-cs.peerMsgQueue:
 			// 接收到其他节点的消息
-			cs.handleMsg(msginfo)
-
-		case msginfo := <-cs.internalMsgQueue:
-			// 收到内部生成的投票or提案
 			cs.handleMsg(msginfo)
 
 		case ti := <-cs.slotClock.Chan():
@@ -236,14 +236,12 @@ func (cs *ConsensusState) receiveEventRoutine() {
 }
 
 // handleMsg 根据不同的消息类型进行操作
-// BlockMessage
-// VoteMessage
-// SlotTimeout
+// @mi  消息，消息类型只包括 BlockMessage
 func (cs *ConsensusState) handleMsg(mi msgInfo) {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 
-	msg, peerID := mi.Msg, mi.PeerID
+	msg := mi.Msg
 	switch msg := msg.(type) {
 	case *ProposalMessage:
 		//networkTime := time.Now().Sub(msg.Proposal.SendTime)
@@ -285,34 +283,14 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 		} else {
 			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
 		}
-	case *VoteMessage:
-		// 收到新的投票信息 尝试将投票加到合适的slot voteset中
-		// 根据added，来决定是否转发该投票，只有正确加入voteset的投票才可以继续转发
-		// added为false不代表vote不合法，可能只是已经添加过了
-
-		added, err := cs.TryAddVote(msg.Vote, peerID)
-		if err != nil {
-			// TODO
-			//cs.Logger.Error("add vote failed.", "reason", err, "vote", msg.Vote)
-			return
-		}
-		if added {
-			//cs.Logger.Info("added vote",
-			//	"slot", msg.Vote.Slot,
-			//	"nodeid", cs.ValIndex,
-			//	"round", msg.Vote.Round,
-			//	"Bytesize", msg.Vote.ByteSize,
-			//	"network time(ms)", msg.Vote.ReceiveTime.Sub(msg.Vote.SendTime).Milliseconds(),
-			//	"total time(ms)", msg.Vote.ReceiveTime.Round(0).Sub(cs.Proposal.SendTime).Milliseconds(),
-			//)
-
-			// 向reactor转发该消息
-			cs.eventSwitch.FireEvent(EventNewVote, msg.Vote)
-		}
+	default:
+		cs.Logger.Error("Unhandle Event,unpre type", "Msg", msg)
 	}
 }
 
 // 状态机转移函数
+// @event cstype.RoundEvent 转台转移触发事件 有四种RoundEventNewSlot，RoundEventApply，RoundEventPropose,RoundEventWait
+//
 func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
@@ -332,6 +310,8 @@ func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
 		cs.enterApply()
 	case cstype.RoundEventPropose:
 		cs.enterPropose()
+	//case cstype.RoundEventWait:
+	//	cs.enterWait()
 	default:
 		cs.Logger.Error("Unhandle Event", "event", event)
 	}
@@ -348,8 +328,10 @@ func (cs *ConsensusState) handleTimeOut(ti timeoutInfo) {
 }
 
 // enterNewSlot 切换到新的slot
+// @slot types.LTime 要切换的slot
 // 由RoundEventSlotEnd事件触发
 // 负责触发RoundEventApply事件
+// 该函数保留
 func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 	defer func() {
 		// 成功切换到新的slot，更新状态到RoundStepSLot
@@ -375,7 +357,7 @@ func (cs *ConsensusState) enterNewSlot(slot types.LTime) {
 }
 
 // enterApply 进入Apply阶段
-// 在这里决定是否确定接受上一个Slot的区块，同时会更新之前的pre-commit block
+// 在这里决定是否有新的区块需要被加入到数据库中
 // RoundEventApply事件触发
 // 负责触发RoundEventPropose事件
 func (cs *ConsensusState) enterApply() {
@@ -573,7 +555,7 @@ func (cs *ConsensusState) decideProposer() {
 func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	cs.Logger.Debug("proposer prepare to use block executor to get proposal", "slot", cs.CurSlot)
 	// 特殊，提案前先更新状态
-	cs.updateStep(cstype.RoundStepPropose)
+	//cs.updateStep(cstype.RoundStepPropose)
 
 	start := time.Now()
 	// step 2 从mempool中打包没有冲突的交易
@@ -601,151 +583,8 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	return proposal
 }
 
-// TODO 更加明确投票规则
-// defaultSetProposal 收到该轮slot leader发布的区块，先验证proposal，然后尝试更新support-quorum
-func (cs *ConsensusState) defaultSetProposal(proposal *types.Proposal) error {
-	needVote := false
-	defer func() {
-		if !needVote {
-			return
-		}
-		// 判断提案是否符合发布规则
-		if cs.state.IsMatch(proposal) {
-			// 提案正确且符合提案规则，投赞成票
-			cs.Logger.Info("support vote", "slot", cs.CurSlot, "proposalHash", proposal.Hash())
-			cs.signVote(proposal, true)
-		} else {
-			// 投反对票
-			cs.Logger.Info("against vote", "slot", cs.CurSlot, "proposalHash", proposal.Hash())
-			cs.signVote(proposal, false)
-		}
-	}()
-
-	cs.Logger.Debug("ready to set proposal", "proposal", proposal.Block)
-
-	// 再次验证proposal - 签名、颁发者是否正确
-	// 验证提案的slot是否和当前的slot相等
-	if !proposal.Slot.Equal(cs.CurSlot) {
-		if proposal.Slot.Greater(cs.CurSlot) {
-			if err := cs.TryAddFutureProposal(proposal.Slot, *proposal); err != nil {
-				return err
-			}
-			cs.Logger.Debug("receive future proposal, caching it success")
-			return errors.New(fmt.Sprintf("receive future proposal. proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
-		}
-		return errors.New(fmt.Sprintf("proposal slot is not same, proposal slot: %v, current slot: %v", proposal.Slot, cs.CurSlot))
-	}
-
-	// 验证提案人是否正确
-	_, val := cs.Validators.GetByAddress(proposal.ValidatorAddr)
-	if !cs.isProposer(val) {
-		return errors.New(fmt.Sprintf("%v is not this slot leader, expected: %v", val.String(), cs.Proposer.String()))
-	}
-
-	start := time.Now()
-	// 验证交易签名的正确性
-	for _, tx := range proposal.Txs {
-		if !tx.Valid() {
-			cs.Logger.Error("block contains invaild transaction", "tx", tx)
-			return errors.New("block contains invaild transaction")
-		}
-	}
-	cs.Logger.Info("all tx is valid.", "cost(ms)", time.Now().Sub(start).Milliseconds())
-
-	// 验证提案的签名
-	if !val.PubKey.VerifySignature(types.ProposalSignBytes(cs.state.ChainID, proposal), proposal.Signature) {
-		return errors.New("verifying proposal signature failed")
-	}
-
-	// 尝试根据提案中的support-quorum更新到对应的区块上
-	if err := cs.blockExec.UpdateState(&cs.state, proposal.Block); err != nil {
-		return err
-	}
-
-	needVote = true
-	cs.Proposal = proposal
-
-	// 接受提案 然后触发事件通知reactor转发
-	cs.eventSwitch.FireEvent(EventNewProposal, proposal)
-
-	return nil
-}
-
-// signVote 根据isApproved决定投票性质，生成投票并且传递到reactor广播
-func (cs *ConsensusState) signVote(proposal *types.Proposal, isApproved bool) {
-	votetype := types.SupportVote
-	if isApproved == false {
-		votetype = types.AgainstVote
-	}
-
-	vote := &types.Vote{
-		Slot:             cs.CurSlot,
-		BlockHash:        proposal.Hash(),
-		Type:             votetype,
-		Timestamp:        time.Now(),
-		ValidatorAddress: cs.state.Validator.Address,
-		ValidatorIndex:   cs.ValIndex,
-		Signature:        []byte("signature"),
-
-		SendTime:    time.Now(),
-		ReceiveTime: time.Now(),
-		Round:       0,
-		From:        int(cs.ValIndex),
-	}
-
-	if err := cs.PrivVal.SignVote(cs.state.ChainID, vote); err != nil {
-		cs.Logger.Error("sign vote failed.", "error", err)
-		return
-	}
-
-	cs.Logger.Debug("proposal vote", "vote", vote)
-
-	// 通过internalChan传递
-	cs.sendInternalMessage(msgInfo{&VoteMessage{Vote: vote}, ""})
-}
-
-// TryAddVote 收到投票后尝试将投票加到对应的区块上
-// 如果返回(true,nil)则添加成功 如果返回(false,err)则投票本身有问题；否则返回(false,nil)说明投票已经添加过了
-func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
-	// 验证投票的合法性 - 签名
-	valIdx, val := cs.Validators.GetByAddress(vote.ValidatorAddress)
-	if valIdx != vote.ValidatorIndex {
-		return false, errors.New(fmt.Sprintf("vote validator has wrong index"))
-	}
-
-	// 验证投票的签名
-	if !val.PubKey.VerifySignature(types.VoteSignBytes(cs.state.ChainID, vote), vote.Signature) {
-		return false, errors.New("vote signature error")
-	}
-
-	err := cs.VoteSet.AddVote(vote)
-	if err != nil {
-		return false, err
-	}
-	cs.Logger.Debug("receive vote.", "src", peerID, "attitude", vote.Type)
-	return true, nil
-}
-
-func (cs *ConsensusState) TryAddFutureProposal(slot types.LTime, proposal types.Proposal) error {
-	_, exist := cs.futureProposal[slot]
-	if exist {
-		return errors.New(fmt.Sprintf("%v slot already exist", slot))
-	}
-
-	cs.futureProposal[slot] = proposal
-
-	return nil
-}
-
-func (cs *ConsensusState) triggleFutureProposal(slot types.LTime) {
-	proposal, exist := cs.futureProposal[slot]
-	if !exist {
-		return
-	}
-	cs.setProposal(&proposal)
-}
-
 // reviseSlotTime 根据最后一个commit的block里的slot time来统一校正时间
+// 可能需要修改
 func (cs *ConsensusState) reviseSlotTime() {
 	if cs.state.LastCommitedBlock == nil {
 		return

@@ -54,6 +54,7 @@ type State struct {
 
 	// uncommitted blocks
 	// 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
+	//UnCommitBlocks *types.BlockSet
 	UnCommitBlocks *types.BlockSet
 
 	// block tree - 所有收到非error区块组织形成的树，根节点一定是genesis block

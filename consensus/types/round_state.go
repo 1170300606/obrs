@@ -46,6 +46,7 @@ const (
 	RoundEventNewSlot = RoundEventType(0x01) // slot超时的事件
 	RoundEventApply   = RoundEventType(0x02) // 进入apply step
 	RoundEventPropose = RoundEventType(0x03) // 进入proposal step
+	//RoundEventWait    = RoundEventType(0x04) // 进入Wait step
 	//RoundEventWait = RoundEventType(0x03) // 进入proposal step
 )
 
