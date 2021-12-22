@@ -5,7 +5,6 @@ import (
 	"chainbft_demo/libs/metric"
 	"chainbft_demo/state"
 	"chainbft_demo/types"
-	"errors"
 	"fmt"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/events"
@@ -44,10 +43,10 @@ type ConsensusState struct {
 	slotClock SlotClock
 
 	// 共识内部状态
-	mtx sync.Mutex
-	cstype.RoundState
-	state     state.State // 最后一个区块提交后的系统状态
-	lastState state.State // 倒数第二个区块提交的系统状态
+	mtx               sync.Mutex
+	cstype.RoundState             //继承RoundState数据类型
+	state             state.State // 最后一个区块提交后的系统状态
+	lastState         state.State // 倒数第二个区块提交的系统状态
 
 	// 通信管道
 	peerMsgQueue     chan msgInfo       // 处理来自其他节点的消息（包含区块、投票）
@@ -113,7 +112,7 @@ func NewConsensusState(
 			LastSlot:   initSlot,
 			Step:       cstype.RoundStepWait,
 			Validators: types.NewValidatorSet([]*types.Validator{}),
-			VoteSet:    cstype.MakeSlotVoteSet(),
+			//VoteSet:    cstype.MakeSlotVoteSet(),
 		},
 		state:            state,
 		peerMsgQueue:     make(chan msgInfo),
@@ -262,7 +261,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 			"network time(ms)", msg.Proposal.ReceiveTime.Sub(msg.Proposal.SendTime).Milliseconds(),
 			"total time(ms)", msg.Proposal.ReceiveTime.Round(0).Sub(msg.Proposal.ProposalTime).Milliseconds(),
 		)
-		if cs.Proposal == nil || cs.Proposal.BlockState == types.DefaultBlock {
+		if cs.Proposal == nil {
 			// 如果不为DefaultBlock 说明节点已经收到一个有效的提案了 不再接受其他提案
 			receiveTime := msg.Proposal.ReceiveTime
 			pround := msg.Proposal.Round
@@ -281,6 +280,9 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 				"network time(ms)", receiveTime.Sub(sendTime).Milliseconds(),
 				"total time(ms)", receiveTime.Round(0).Sub(msg.Proposal.ProposalTime).Milliseconds(),
 			)
+			//直接调用state中的ApplyBlock函数提交proposal中的Block
+			//算了，还是独立成函数吧，省的结构有问题
+			cs.applyblock(msg.Proposal.Block)
 		} else {
 			cs.Logger.Debug("can not set proposal", "proposal", msg.Proposal.Block)
 		}
@@ -289,9 +291,21 @@ func (cs *ConsensusState) handleMsg(mi msgInfo) {
 	}
 }
 
+//提交
+func (cs *ConsensusState) applyblock(block *types.Block) {
+	newState, err := cs.blockExec.ApplyBlock(cs.state, block)
+	if err != nil {
+		cs.Logger.Error("Apply block failed.", "slot", cs.CurSlot, "reason", err)
+		return
+	}
+	cs.lastState = cs.state
+	cs.state = newState
+	cs.Logger.Debug("apply done", "last state", cs.lastState, "current state", cs.state)
+}
+
 // 状态机转移函数
 // @event cstype.RoundEvent 转台转移触发事件 有四种RoundEventNewSlot，RoundEventApply，RoundEventPropose,RoundEventWait
-//
+// 现在没有RoundEventWait事件了
 func (cs *ConsensusState) handleEvent(event cstype.RoundEvent) {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
@@ -371,7 +385,7 @@ func (cs *ConsensusState) enterApply() {
 		// 设置空提案 该提案不follow任何一个区块
 		cs.Proposal = types.MakeEmptyProposal()
 		// TODO start timne
-		cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, types.DefaultBlock, DefaultBlockParent, cs.Proposer.Address, cs.state.Validators.Hash(), cs.curSlotStartTime)
+		cs.Proposal.Fill(cs.state.ChainID, cs.CurSlot, DefaultBlockParent, cs.Proposer.Address, cs.state.Validators.Hash(), cs.curSlotStartTime)
 
 		// 成功执行完apply，更新状态到RoundStepApply
 		cs.updateStep(cstype.RoundStepApply)
@@ -391,106 +405,24 @@ func (cs *ConsensusState) enterApply() {
 		return
 	}
 
-	// 先来更新一下可能迟收的block，万一这个block包含上一轮slot的proposal的support-quorum
-	// 可能在之前的slot收到当前slot的proposal。原因是因为当前节点是慢节点
-	cs.triggleFutureProposal(cs.CurSlot)
-
-	// 尝试根据目前的投票生成quorum
-	voteset := cs.VoteSet.GetVotesBySlot(cs.LastSlot)
-	if voteset != nil {
-		cs.Logger.Info("voteset is not empty", "size", len(voteset.GetVotes()), "vote set", voteset.GetVotes())
-
-		// 有收到投票
-		//witness := cs.Proposal.Block
-		quorum := voteset.TryGenQuorum(Threshold)
-		quorum.SLot = cs.Proposal.Slot
-
-		cs.Logger.Info("generate quorum done.", "attitude", quorum.Type.String())
-		cs.Proposal.Block.VoteQuorum = quorum
-
-		if quorum.Type == types.SupportQuorum {
-			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.PrecommitBlock)
-		} else if quorum.Type == types.AgainstQuorum {
-			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.ErrorBlock)
-		} else {
-			cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.SuspectBlock)
-		}
-	} else {
-		// 没有收到一张投票
-		cs.Logger.Info("proposal receive no votes from other peers", "proposal", cs.Proposal)
-		cs.blockExec.UpdateBlockState(cs.Proposal.Block, types.SuspectBlock)
-
-	}
-
-	// TODO 为所有的未提交区块更新commit证据
-	cs.updateEvidences()
-	cs.Logger.Debug("proposal ready to commit", "status", cs.Proposal.BlockState)
-
 	// 函数会和blockExec交互
 	// 决定提交哪些区块
-	stateCopy := cs.state.Copy()
-	newState, err := cs.blockExec.ApplyBlock(stateCopy, cs.RoundState.Proposal.Block)
-	if err != nil {
-		cs.Logger.Error("Apply block failed.", "slot", cs.CurSlot, "reason", err)
-		return
-	}
-
-	// apply 成功，变更状态
-	cs.lastState = cs.state
-	cs.state = newState
-	cs.Logger.Debug("apply done", "last state", cs.lastState, "current state", cs.state)
-}
-
-// 以proposal为更新起点，依次更新所有相关区块的commit证据
-func (cs *ConsensusState) updateEvidences() {
-	if !cs.hasProposal() {
-		return
-	}
-	checkstack := []*types.Block{cs.Proposal.Block}
-
-	for len(checkstack) > 0 {
-		block := checkstack[len(checkstack)-1]
-		checkstack = checkstack[:len(checkstack)-1]
-
-		checkstack = append(checkstack, cs.updateEvidence(block)...)
-	}
-}
-
-// 更新某个指定区块的evidence
-func (cs *ConsensusState) updateEvidence(witness *types.Block) []*types.Block {
-	evidenceBlocks := make([]*types.Block, 0, len(witness.Evidences))
-	for _, evidence := range witness.Evidences {
-		if evidence.Type != types.SupportQuorum {
-			continue
-		}
-
-		// witness区块的evidence包含block，尝试更新block的状态
-		block := cs.state.UnCommitBlocks.QueryBlockByHash(evidence.BlockHash)
-		if block == nil || block.BlockState == types.CommittedBlock {
-			// 没有查到区块 可能已经提交
-			continue
-		}
-
-		if block.Commit == nil {
-			block.Commit = &types.Commit{}
-		}
-
-		block.Commit.SetQuorum(&evidence)
-		block.Commit.SetWitness(witness)
-		evidenceBlocks = append(evidenceBlocks, block)
-		cs.Logger.Info("block update commit evidence",
-			"evidence", evidence,
-			"blockHash", block.Hash(),
-			"witnessHash", witness.Hash(),
-		)
-	}
-
-	return evidenceBlocks
+	//stateCopy := cs.state.Copy()
+	//newState, err := cs.blockExec.ApplyBlock(stateCopy, cs.RoundState.Proposal.Block)
+	//if err != nil {
+	//	cs.Logger.Error("Apply block failed.", "slot", cs.CurSlot, "reason", err)
+	//	return
+	//}
+	//
+	//// apply 成功，变更状态
+	//cs.lastState = cs.state
+	//cs.state = newState
+	//cs.Logger.Debug("apply done", "last state", cs.lastState, "current state", cs.state)
 }
 
 // hasProposal 判断是否在这一轮slot有收到合适的提案
 func (cs *ConsensusState) hasProposal() bool {
-	if cs.Proposal != nil && cs.Proposal.BlockState != types.DefaultBlock {
+	if cs.Proposal != nil {
 		return true
 	}
 	return false
@@ -525,7 +457,7 @@ func (cs *ConsensusState) enterPropose() {
 	}
 
 	// 使用函数接口来调用propose逻辑，方便测试
-	cs.decideProposal()
+	cs.decideProposal() //decideProposer()
 }
 
 // 判断这个节点是不是这轮slot的 leader
@@ -582,47 +514,6 @@ func (cs *ConsensusState) defaultProposal() *types.Proposal {
 	}, ""})
 
 	return proposal
-}
-
-// TryAddVote 收到投票后尝试将投票加到对应的区块上
-// 如果返回(true,nil)则添加成功 如果返回(false,err)则投票本身有问题；否则返回(false,nil)说明投票已经添加过了
-func (cs *ConsensusState) TryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
-	// 验证投票的合法性 - 签名
-	valIdx, val := cs.Validators.GetByAddress(vote.ValidatorAddress)
-	if valIdx != vote.ValidatorIndex {
-		return false, errors.New(fmt.Sprintf("vote validator has wrong index"))
-	}
-
-	// 验证投票的签名
-	if !val.PubKey.VerifySignature(types.VoteSignBytes(cs.state.ChainID, vote), vote.Signature) {
-		return false, errors.New("vote signature error")
-	}
-
-	err := cs.VoteSet.AddVote(vote)
-	if err != nil {
-		return false, err
-	}
-	cs.Logger.Debug("receive vote.", "src", peerID, "attitude", vote.Type)
-	return true, nil
-}
-
-func (cs *ConsensusState) TryAddFutureProposal(slot types.LTime, proposal types.Proposal) error {
-	_, exist := cs.futureProposal[slot]
-	if exist {
-		return errors.New(fmt.Sprintf("%v slot already exist", slot))
-	}
-
-	cs.futureProposal[slot] = proposal
-
-	return nil
-}
-
-func (cs *ConsensusState) triggleFutureProposal(slot types.LTime) {
-	proposal, exist := cs.futureProposal[slot]
-	if !exist {
-		return
-	}
-	cs.setProposal(&proposal)
 }
 
 // reviseSlotTime 根据最后一个commit的block里的slot time来统一校正时间
@@ -705,25 +596,12 @@ func (cs *ConsensusState) GetAllBlocks() []*types.Block {
 }
 
 func (cs *ConsensusState) GetCommittedBlocks() []*types.Block {
-	blocks := make([]*types.Block, 0, cs.state.BlockTree.Size())
-
-	// 从block tree中加载已经commit的区块
-	cs.state.BlockTree.ForEach(func(block *types.Block) {
-		if block.BlockState == types.CommittedBlock {
-			blocks = append(blocks, block)
-		}
-	})
+	blocks := cs.blockExec.GetCommit(cs.state)
 	return blocks
 }
 
 func (cs *ConsensusState) GetUnCommittedBlocks() []*types.Block {
-	blocks := make([]*types.Block, 0, cs.state.UnCommitBlocks.Size())
-
-	// 加载从uncommit blocks中
-	cs.state.UnCommitBlocks.ForEach(func(block *types.Block) {
-		blocks = append(blocks, block)
-	})
-
+	blocks := cs.blockExec.GetUnCommit(cs.state)
 	return blocks
 }
 

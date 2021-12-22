@@ -63,8 +63,8 @@ func BlockTree(ctx *rpctypes.Context) (*ResultBlockTree, error) {
 		}
 
 		block := ResultBlock{
-			Slot:          oblock.Slot,
-			BlockStatus:   oblock.BlockState.String(),
+			Slot: oblock.Slot,
+			//BlockStatus:   oblock.BlockState.String(),
 			LastBlockHash: oblock.LastBlockHash,
 			BlockHash:     oblock.BlockHash,
 			TxNum:         len(oblock.Data.Txs),
@@ -107,9 +107,6 @@ func performance(ctx *rpctypes.Context, start, end int) (*ResultPerformance, err
 	for i := start; i <= end; i++ {
 		oblock, ok := slotBlocks[i]
 		if !ok {
-			continue
-		}
-		if oblock.BlockState != types.CommittedBlock {
 			continue
 		}
 		if startTime == 0 {

@@ -8,61 +8,20 @@ import (
 	"time"
 )
 
-type BlockState uint8
-
-const (
-	// block status
-	DefaultBlock   = BlockState(0)  // 空白区块 该轮slot尚未收到任何提案
-	ProposalBlock  = BlockState(1)  // 提案状态 尚未收到任何投票的区块，即提案
-	ErrorBlock     = BlockState(2)  // 错误的区块，收到against-quorum的区块
-	SuspectBlock   = BlockState(3)  // 没有收到任意quorum的区块
-	PrecommitBlock = BlockState(4)  // supprot-quorum的区块
-	CommittedBlock = BlockState(20) // 处于PrecommitBlock的区块有suppror-quorum的后代区块
-
-	// time label
-	BlockProposalTime  = "proposal_time"
-	BlockPrecommitTime = "precommit_time"
-	BlockCommitTime    = "commit_time"
-	BlockSuspectTime   = "suspect_time"
-)
-
-func (state BlockState) String() string {
-	switch state {
-	case DefaultBlock:
-		return "DefaultBlock"
-	case ProposalBlock:
-		return "ProposalBlock"
-	case ErrorBlock:
-		return "ErrorBlock"
-	case SuspectBlock:
-		return "SuspectBlock"
-	case PrecommitBlock:
-		return "PrecommitBlock"
-	case CommittedBlock:
-		return "CommittedBlock"
-	default:
-		return "UnkownTypeBlock"
-	}
-}
-
 // local blockchain维护的区块的基本单位
 type Block struct {
-	mtx        sync.Mutex
-	Header     `json:"header""`
-	Data       `json:"data"`
-	VoteQuorum Quorum   `json:"quorum"`    // 当前区块收到的投票合法集合
-	Evidences  []Quorum `json:"evidences"` //  指向前面区块的support-quorum
-	Commit     *Commit  `json:"commit"`    // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
+	mtx    sync.Mutex
+	Header `json:"header""`
+	Data   `json:"data"`
+	//VoteQuorum Quorum   `json:"quorum"`    // 当前区块收到的投票合法集合
+	//Evidences  []Quorum `json:"evidences"` //  指向前面区块的support-quorum
+	Commit *Commit `json:"commit"` // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
 }
 
 // 检验一个block是否合法 - 这里的合法指的是没有明确的错误
 func (block *Block) ValidteBasic() error {
 	block.mtx.Lock()
 	defer block.mtx.Unlock()
-
-	if block.BlockState == ErrorBlock {
-		return errors.New("block state is error")
-	}
 
 	if block.BlockHash == nil || len(block.BlockHash) == 0 {
 		return errors.New("block had no blockhash")
@@ -93,11 +52,11 @@ func (b *Block) Hash() tmbytes.HexBytes {
 
 type Header struct {
 	// 基本的区块信息
-	ChainID       string     `json:"chain_id"`
-	Slot          LTime      `json:"slot"`
-	SlotStartTime time.Time  `json:"slot_start_time"` // 临时方案，添加一个切换到新slot的时间，来多个节点之间调整校正
-	BlockState    BlockState `json:"block_state"`     // 不参与hash的计算
-	ProposalTime  time.Time  `json:"proposal_time"`   // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
+	ChainID       string    `json:"chain_id"`
+	Slot          LTime     `json:"slot"`
+	SlotStartTime time.Time `json:"slot_start_time"` // 临时方案，添加一个切换到新slot的时间，来多个节点之间调整校正
+	//BlockState    BlockState `json:"block_state"`     // 不参与hash的计算
+	ProposalTime time.Time `json:"proposal_time"` // 区块产生的时间，如果是创世块的话，那么改时间则是系统开始运转的时间
 
 	// 数据hash
 	LastBlockHash  tmbytes.HexBytes `json:last_block_hash`   // 上一个区块的信息
@@ -121,7 +80,7 @@ type Header struct {
 func (h *Header) Fill(
 	chainID string,
 	Slot LTime,
-	state BlockState,
+	//state BlockState,
 	LastBlockHash []byte,
 	valdatorAddr []byte,
 	validatorsHash []byte,
@@ -129,7 +88,7 @@ func (h *Header) Fill(
 ) {
 	h.ChainID = chainID
 	h.Slot = Slot
-	h.BlockState = state
+	//h.BlockState = state
 	h.LastBlockHash = LastBlockHash
 	h.ValidatorAddr = valdatorAddr
 	h.ValidatorsHash = validatorsHash
@@ -156,14 +115,6 @@ func (h *Header) CalculateTime() {
 	h.TimePrecommit = h.BlockPrecommitTime - h.ProposalTime.UnixNano()
 	h.TimeCommit = h.BlockCommitTime - h.BlockPrecommitTime
 	h.TimeConsensus = h.BlockCommitTime - h.ProposalTime.UnixNano()
-}
-
-func (h *Header) MarkTime(s string, t int64) {
-	if s == BlockCommitTime {
-		h.BlockCommitTime = t
-	} else if s == BlockPrecommitTime {
-		h.BlockPrecommitTime = t
-	}
 }
 
 type Data struct {

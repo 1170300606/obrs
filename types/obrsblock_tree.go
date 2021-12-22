@@ -2,7 +2,13 @@ package types
 
 import (
 	"bytes"
+	"errors"
 	"sync"
+)
+
+var (
+	ErrDuplicatedBlock = errors.New("Duplicated block data in Block Tree")
+	ErrNoQueryBlock    = errors.New("No such Block queried by hash value")
 )
 
 //为了分层考虑，所有的大写字母开头的函数，返回值不要出现树中定义的数据结构
@@ -14,7 +20,7 @@ func NewObrsBlockTree(genBlock *Block) *ObrsBlockTree {
 		children: []*obrsTreeNode{},
 		data:     genBlock,
 		height:   1,
-		//commited: false,
+		commited: false,
 	}
 	return &ObrsBlockTree{
 		root:     root,
@@ -35,7 +41,7 @@ type obrsTreeNode struct {
 	children []*obrsTreeNode
 	data     *Block
 	height   int
-	//commited bool //表示该节点是否被提交到数据库，如果已经被提交则显示true，否则是false
+	commited bool //表示该节点是否被提交到数据库，如果已经被提交则显示true，否则是false
 }
 
 // 在树中插入一个节点，根据hash确定父节点
@@ -101,7 +107,7 @@ func (tree *ObrsBlockTree) queryNodeByHash(hash []byte) (*obrsTreeNode, error) {
 // @filter ???
 // 从当前主链先前跳过pending节点后,将剩下的未提交的节点提交
 // 返回一个[],用于储存所有需要提交的节点
-func (tree *ObrsBlockTree) GetBlockByFilter(filter FilterFunc) []*Block {
+func (tree *ObrsBlockTree) GetBlockCanCommit() []*Block {
 	tree.mtx.RLock()
 	defer tree.mtx.RUnlock()
 	res := []*Block{}
@@ -113,10 +119,8 @@ func (tree *ObrsBlockTree) GetBlockByFilter(filter FilterFunc) []*Block {
 			return res //如果到头了就提前退出
 		}
 	}
-	for cur := endBlock; cur != nil && cur.data.BlockState != CommittedBlock; cur = cur.parent {
-		if filter(cur.data) {
-			res = append(res, cur.data)
-		}
+	for cur := endBlock; cur != nil && cur.commited == false; cur = cur.parent {
+		res = append(res, cur.data)
 	}
 	return res
 }
@@ -137,4 +141,75 @@ func (tree *ObrsBlockTree) Size() int {
 // 返回tree.root.data
 func (tree *ObrsBlockTree) GetRoot() *Block {
 	return tree.root.data
+}
+
+// ForEach 以层级遍历的顺序，对所有节点执行lambda函数
+// @lambd遍历所执行的函数
+func (tree *ObrsBlockTree) ForEach(lambda func(block *Block)) {
+	tree.mtx.RLock()
+	defer tree.mtx.RUnlock()
+	queue := []*obrsTreeNode{tree.root}
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if len(cur.children) > 0 {
+			queue = append(queue, cur.children...)
+		}
+		lambda(cur.data)
+	}
+
+}
+
+// ForEach 以层级遍历的顺序，对所有节点执行lambda函数
+// @lambd遍历所执行的函数
+func (tree *ObrsBlockTree) Commit(hash []byte) error {
+	tree.mtx.RLock()
+	defer tree.mtx.RUnlock()
+
+	commitnode, err := tree.queryNodeByHash(hash)
+	if err != nil {
+
+	}
+
+	commitnode.commited = true
+	return nil
+}
+
+// 取得所有已经commit的节点
+func (tree *ObrsBlockTree) GetCommit() []*Block {
+	tree.mtx.RLock()
+	defer tree.mtx.RUnlock()
+	queue := []*obrsTreeNode{tree.root}
+	res := []*Block{}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if len(cur.children) > 0 {
+			queue = append(queue, cur.children...)
+		}
+		if (cur.commited == false) && (cur != tree.root) {
+			res = append(res, cur.data)
+		}
+	}
+	return res
+}
+
+// 取得所有已经uncommit的节点
+func (tree *ObrsBlockTree) GetUnCommit() []*Block {
+	tree.mtx.RLock()
+	defer tree.mtx.RUnlock()
+	queue := []*obrsTreeNode{tree.root}
+	res := []*Block{}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if len(cur.children) > 0 {
+			queue = append(queue, cur.children...)
+		}
+		if (cur.commited != false) && (cur != tree.root) {
+			res = append(res, cur.data)
+		}
+	}
+	return res
 }

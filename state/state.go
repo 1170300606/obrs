@@ -14,7 +14,7 @@ func MakeGenesisState(
 	vals *types.ValidatorSet,
 ) State {
 	state := NewState(chainID, InitialSlot, val, pub_val, vals)
-	state.BlockTree = types.NewBlockTree(genesisBlock)
+	state.BlockTree = types.NewObrsBlockTree(genesisBlock)
 	return state
 }
 
@@ -25,12 +25,12 @@ func NewState(
 	vals *types.ValidatorSet,
 ) State {
 	return State{
-		ChainID:        chainID,
-		InitialSlot:    InitialSlot,
-		PubVal:         pub_val,
-		Validator:      val,
-		Validators:     vals,
-		UnCommitBlocks: types.NewBlockSet(),
+		ChainID:     chainID,
+		InitialSlot: InitialSlot,
+		PubVal:      pub_val,
+		Validator:   val,
+		Validators:  vals,
+		//UnCommitBlocks: types.NewBlockSet(),
 	}
 }
 
@@ -54,11 +54,11 @@ type State struct {
 
 	// uncommitted blocks
 	// 查询操作的比重会很大 - 能在PreCommitBlocks快速找到blockhash对应的区块
-	//UnCommitBlocks *types.BlockSet
-	UnCommitBlocks *types.BlockSet
+	// UnCommitBlocks *types.BlockSet
+	// UnCommitBlocks *types.BlockSet //删除该结构
 
 	// block tree - 所有收到非error区块组织形成的树，根节点一定是genesis block
-	BlockTree *types.BlockTree
+	BlockTree *types.ObrsBlockTree //替换成obrs结构
 
 	// 最后提交区块的结果集的hash or merkle root？
 	LastResultsHash []byte
@@ -67,12 +67,12 @@ type State struct {
 // 返回当前state的拷贝副本，deepcopy
 func (state *State) Copy() State {
 	newState := State{
-		ChainID:         state.ChainID,
-		InitialSlot:     state.InitialSlot,
-		LastBlockSlot:   state.LastBlockSlot,
-		LastBlockHash:   make([]byte, len(state.LastBlockHash)),
-		LastBlockTime:   state.LastBlockTime,
-		UnCommitBlocks:  state.UnCommitBlocks,
+		ChainID:       state.ChainID,
+		InitialSlot:   state.InitialSlot,
+		LastBlockSlot: state.LastBlockSlot,
+		LastBlockHash: make([]byte, len(state.LastBlockHash)),
+		LastBlockTime: state.LastBlockTime,
+		//UnCommitBlocks:  state.UnCommitBlocks,
 		BlockTree:       state.BlockTree,
 		PubVal:          state.PubVal,
 		Validator:       state.Validator,
@@ -87,18 +87,11 @@ func (state *State) Copy() State {
 }
 
 // NewBranch 遵循正常扩展分支的扩展逻辑，返回一个新的区块应该follow的区块 - 一般返回最长/深的区块
-// 返回应该follow的区块，以及这个区块所在路径上所precommit的区块list
+// 返回应该follow的区块
 // 在收到新的区块以前，重复调用保持幂等性
-func (state *State) NewBranch() (*types.Block, []*types.Block) {
+func (state *State) NewBranch() *types.Block {
 	b := state.BlockTree.GetLatestBlock()
-	precommitBlocks := state.BlockTree.GetBlockByFilter(b.Hash(), func(block *types.Block) bool {
-		if block.BlockState == types.PrecommitBlock {
-			return true
-		}
-		return false
-	})
-
-	return b, precommitBlocks
+	return b
 }
 
 // IsMatch 判断一个提案是否符合提案规则
@@ -110,50 +103,20 @@ func (state *State) IsMatch(proposal *types.Proposal) bool {
 
 // Commit一个区块，把该区块从UnCommitBLocks中移除，放入到BlockTree中
 func (state *State) CommitBlock(block *types.Block) {
-	state.UnCommitBlocks.RemoveBlocks([]*types.Block{block})
+	state.BlockTree.Commit(block.BlockHash)
 }
 
 func (state *State) CommitBlocks(blocks []*types.Block) {
-	state.UnCommitBlocks.RemoveBlocks(blocks)
+	for i := range blocks {
+		state.CommitBlock(blocks[i])
+	}
 }
 
 // decideCommitBlocks 在当前状态，根据新的block给出可以提交的区块
 // 要为每个可以提交的区块生成commit
 func (state *State) decideCommitBlocks(block *types.Block) []*types.Block {
-	toCommitBlocks := []*types.Block{}
-
-	blocks := state.UnCommitBlocks.Blocks()
-	idx := -1
-	// 从后往前找到第一个可以提交的区块，且他们保持在同一个tree的分支上 TODO
-	for i := len(blocks) - 1; i >= 0; i-- {
-		if blocks[i].Commit == nil {
-			continue
-		}
-		if blocks[i].Commit.IsReady() == true {
-			idx = i
-			break
-		}
-	}
-
-	if idx == -1 {
-		return toCommitBlocks
-	}
-	lastCommitedBlock := blocks[idx]
-	toCommitBlocks = append(toCommitBlocks, lastCommitedBlock)
-	for true {
-		preHash := lastCommitedBlock.LastBlockHash
-		preBlock, err := state.BlockTree.QueryBlockByHash(preHash)
-		if err != nil || preBlock.BlockState == types.CommittedBlock {
-			break
-		}
-		toCommitBlocks = append(toCommitBlocks, preBlock)
-		lastCommitedBlock = preBlock
-	}
-
-	for i := 0; i < len(toCommitBlocks)/2; i++ {
-		toCommitBlocks[i], toCommitBlocks[len(toCommitBlocks)-i-1] = toCommitBlocks[len(toCommitBlocks)-i-1], toCommitBlocks[i]
-	}
-
+	//toCommitBlocks := []*types.Block{}
+	toCommitBlocks := state.BlockTree.GetBlockCanCommit()
 	return toCommitBlocks
 }
 

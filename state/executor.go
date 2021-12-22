@@ -6,7 +6,6 @@ import (
 	"chainbft_demo/types"
 	"errors"
 	"github.com/tendermint/tendermint/libs/log"
-	tmtime "github.com/tendermint/tendermint/types/time"
 	"time"
 )
 
@@ -22,11 +21,15 @@ type BlockExecutor interface {
 	// Apply一个指定的区块，如果提交成功后state发生变化，返回新的state
 	ApplyBlock(state State, block *types.Block) (State, error)
 
-	UpdateBlockState(block *types.Block, blockstate types.BlockState) error
+	//UpdateBlockState(block *types.Block, blockstate types.BlockState) error
 
-	UpdateState(state *State, proposal *types.Block) error
+	//UpdateState(state *State, proposal *types.Block) error
 
 	SetLogger(logger log.Logger)
+
+	GetCommit(state State) []*types.Block
+
+	GetUnCommit(state State) []*types.Block
 }
 
 type BlockExecutorOption func(excutor *blockExecutor)
@@ -75,7 +78,7 @@ func (exec *blockExecutor) ApplyBlock(state State, proposal *types.Block) (State
 	}
 
 	// 根据proposal的投票情况更新blockSet
-	state.UnCommitBlocks.AddBlock(proposal)
+	//state.UnCommitBlocks.AddBlock(proposal)
 
 	// 决定哪些区块可以提交
 	toCommitBlock := state.decideCommitBlocks(proposal)
@@ -110,10 +113,10 @@ func (exec *blockExecutor) Commit(
 		}
 
 		// step 2 更新mempool，删除交易
-		if err := exec.UpdateBlockState(block, types.CommittedBlock); err != nil {
-			exec.logger.Error("commit block failed when update mempool.", "err", err, "block", block.Hash())
-			continue
-		}
+		//if err := exec.UpdateBlockState(block, types.CommittedBlock); err != nil {
+		//	exec.logger.Error("commit block failed when update mempool.", "err", err, "block", block.Hash())
+		//	continue
+		//}
 
 		exec.logger.Info("commit block", "proposal", block.ProposalTime.UnixNano(),
 			"precommit", block.BlockPrecommitTime,
@@ -138,7 +141,7 @@ func (exec *blockExecutor) Commit(
 // 从mempool中打包交易
 func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *types.Proposal {
 	// step 1 根据state中的信息，选出下一轮应该follow哪个区块
-	parentBlock, precommitBlocks := state.NewBranch()
+	parentBlock := state.NewBranch()
 
 	// step 2 reap all tx from mempool
 	// reap时候要选择没有冲突的交易
@@ -148,18 +151,12 @@ func (exec *blockExecutor) CreateProposal(state State, curSlot types.LTime) *typ
 	// step 3将区块头填补完整
 	block.Fill(
 		state.ChainID, curSlot,
-		types.ProposalBlock,
+		//types.ProposalBlock,
 		parentBlock.BlockHash,
 		state.Validator.Address, state.Validators.Hash(),
 		time.Now(),
 	)
 	block.Hash()
-
-	// step 4 生成evidence
-	block.Evidences = []types.Quorum{}
-	for _, pblock := range precommitBlocks {
-		block.Evidences = append(block.Evidences, pblock.VoteQuorum.Copy())
-	}
 
 	exec.logger.Info("proposal created.",
 		"slot", block.Slot,
@@ -189,74 +186,10 @@ func (exec *blockExecutor) validateBlock(state State, block *types.Block) error 
 	return nil
 }
 
-func (exec *blockExecutor) UpdateBlockState(block *types.Block, blockstate types.BlockState) error {
-	if block.BlockState == blockstate {
-		return nil
-	}
-
-	// TODO 暂时关闭和mempool的交互
-	if blockstate == types.PrecommitBlock {
-		//exec.mempool.LockTxs(block.Txs)
-		block.MarkTime(types.BlockPrecommitTime, tmtime.Now().UnixNano())
-	} else if blockstate == types.ErrorBlock {
-		//exec.mempool.ReleaseTxs(block.Txs)
-	} else if blockstate == types.CommittedBlock {
-		//exec.mempool.Update(block.Slot, block.Txs)
-		block.MarkTime(types.BlockCommitTime, tmtime.Now().UnixNano())
-		block.CalculateTime()
-	}
-	block.BlockState = blockstate
-	return nil
+func (exec *blockExecutor) GetCommit(state State) []*types.Block {
+	return state.BlockTree.GetCommit()
 }
 
-func (exec *blockExecutor) UpdateState(state *State, proposal *types.Block) error {
-	if state.PubVal == nil {
-		// public validator为空 没法更新
-		return errors.New("validator public key is nil")
-	}
-	// 如果evidence quorum不为空，更新以往到区块的信息
-	if proposal.Evidences == nil {
-		return nil
-	}
-	for _, evidence := range proposal.Evidences {
-		blockhash := evidence.BlockHash
-
-		block := state.UnCommitBlocks.QueryBlockByHash(blockhash)
-		if block == nil || block.BlockState == types.CommittedBlock {
-			// 已经提交的区块
-			continue
-		}
-
-		if block.Commit == nil {
-			block.Commit = &types.Commit{}
-		}
-
-		// TODO FIX
-		// 首先检验evidence的正确性 - 签名的正确性
-		//if !state.PubVal.PubKey.VerifySignature(types.ProposalSignBytes(state.ChainID, &types.Proposal{block}), evidence.Signature) {
-		//	// evidence验证错误 跳过
-		//	exec.logger.Error("evidence is wrong.", "proposal", proposal)
-		//	continue
-		//}
-
-		block.VoteQuorum = evidence
-		// 更新blockstate
-		if evidence.Type == types.SupportQuorum {
-			if block.BlockState != types.PrecommitBlock {
-				// 如果更改区块状态为precommit
-				block.MarkTime(types.BlockPrecommitTime, tmtime.Now().UnixNano())
-				if err := exec.UpdateBlockState(block, types.PrecommitBlock); err != nil {
-					exec.logger.Error("update block state to precommit failed.", "err", err)
-					return err
-				}
-			}
-		} else if evidence.Type == types.AgainstQuorum {
-			if err := exec.UpdateBlockState(block, types.ErrorBlock); err != nil {
-				exec.logger.Error("update block state to error failed.", "err", err)
-				return err
-			}
-		}
-	}
-
-	return nil
+func (exec *blockExecutor) GetUnCommit(state State) []*types.Block {
+	return state.BlockTree.GetUnCommit()
 }

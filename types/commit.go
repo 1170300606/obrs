@@ -40,8 +40,6 @@ func (c *Commit) IsReady() bool {
 	}
 
 	// 见证者已经提交或者处于precommit状态
-	if root.Witness.BlockState == PrecommitBlock || root.Witness.BlockState == CommittedBlock {
-		return true
-	}
+
 	return false
 }

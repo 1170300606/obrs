@@ -94,7 +94,7 @@ type RoundState struct {
 
 	Proposer *types.Validator // 这一轮的提案者
 	Proposal *types.Proposal  // 这一轮收到的合法提案
-	VoteSet  *SlotVoteSet     // slot=> voteSet的投票集合
+	//VoteSet  *SlotVoteSet     // slot=> voteSet的投票集合
 
-	LastCommit *types.Commit // 最后一个 committed区块的commit
+	//LastCommit *types.Commit // 最后一个 committed区块的commit
 }

@@ -8,18 +8,18 @@ import (
 func MakeGenesisBlock(ChainID string, genesisTime time.Time) *Block {
 	return &Block{
 		Header: Header{
-			ChainID:       ChainID,
-			Slot:          LtimeZero,
-			ProposalTime:  genesisTime,
-			BlockState:    CommittedBlock,
+			ChainID:      ChainID,
+			Slot:         LtimeZero,
+			ProposalTime: genesisTime,
+			//BlockState:    CommittedBlock,
 			LastBlockHash: []byte{},
 			BlockHash:     nil,
 		},
 		Data: Data{
 			Txs: Txs{},
 		},
-		VoteQuorum: Quorum{},
-		Evidences:  []Quorum{},
+		//VoteQuorum: Quorum{},
+		//Evidences:  []Quorum{},
 	}
 }
 
@@ -39,11 +39,11 @@ func MakeBlock(txs []Tx) *Block {
 func MakeEmptyProposal() *Proposal {
 	return &Proposal{
 		Block: &Block{
-			Header:     Header{},
-			Data:       Data{Txs: Txs{}},
-			VoteQuorum: Quorum{},
-			Evidences:  []Quorum{},
-			Commit:     nil,
+			Header: Header{},
+			Data:   Data{Txs: Txs{}},
+			//VoteQuorum: Quorum{},
+			//Evidences:  []Quorum{},
+			Commit: nil,
 		},
 	}
 }
