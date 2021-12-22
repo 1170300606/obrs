@@ -1,7 +1,0 @@
-package consensus
-
-{
-
-}
-
-func
