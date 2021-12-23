@@ -5,13 +5,15 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	"os"
 	"path/filepath"
-
+	//"chainbft_demo/types"
 	cmd "chainbft_demo/cmd/commands"
 	nm "chainbft_demo/node"
 	"github.com/tendermint/tendermint/libs/cli"
 )
 
 func main() {
+	//types.()
+
 	cfg.DefaultTendermintDir = ".chain_bft"
 	rootCmd := cmd.RootCmd
 

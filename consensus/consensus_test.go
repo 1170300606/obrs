@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	cstypes "chainbft_demo/consensus/types"
 	"chainbft_demo/crypto/bls"
 	threshold2 "chainbft_demo/crypto/threshold"
 	mempl "chainbft_demo/mempool"
@@ -136,4 +137,39 @@ func TestEnterProposeInWrongWay(t *testing.T) {
 	}) //手动触发
 
 	cs.OnStop()
+}
+
+func TestProposal(t *testing.T) {
+	priv, vals, pub_val := newPrivAndValSet(4)
+	_, val := vals.GetByIndex(0)
+	txs := []types.Tx{}
+	cs, clean := newConsensusState(priv[0], val, pub_val, vals, func(mem mempl.Mempool) {
+		// 默认创建10条交易
+		for i := 0; i < 10; i++ {
+			//tx_ := []byte(fmt.Sprintf("tx=%v", i))
+			tx := types.NewTx()
+			txs = append(txs, tx)
+			err := mem.CheckTx(tx, mempl.TxInfo{
+				SenderID: mempl.UnknownPeerID,
+			})
+			assert.NoError(t, err, "add %vth tx into mempool failed.", i)
+		}
+	})
+
+	defer clean()
+	defer clean()
+	cs.OnStart()
+	cs.slotClock.OnStart()
+	cs.updateStep(cstypes.RoundStepApply)
+
+	var proposal *types.Proposal
+
+	assert.NotPanics(t, func() {
+		proposal = cs.defaultProposal()
+	}, "propose failed.")
+
+	// 暂停一会保证setproposal正常执行
+	time.Sleep(1 * time.Second)
+
+	assert.Equal(t, proposal, cs.Proposal, "proposal不一致，setProposal失败")
 }

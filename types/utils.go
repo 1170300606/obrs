@@ -43,7 +43,7 @@ func MakeEmptyProposal() *Proposal {
 			Data:   Data{Txs: Txs{}},
 			//VoteQuorum: Quorum{},
 			//Evidences:  []Quorum{},
-			Commit: nil,
+			//Commit: nil,
 		},
 	}
 }

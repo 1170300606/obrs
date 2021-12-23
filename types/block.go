@@ -15,7 +15,7 @@ type Block struct {
 	Data   `json:"data"`
 	//VoteQuorum Quorum   `json:"quorum"`    // 当前区块收到的投票合法集合
 	//Evidences  []Quorum `json:"evidences"` //  指向前面区块的support-quorum
-	Commit *Commit `json:"commit"` // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
+	//Commit *Commit `json:"commit"` // 区块能够提交的证据 - 即proposer所有pre-commit的区块的support-quorum
 }
 
 // 检验一个block是否合法 - 这里的合法指的是没有明确的错误
